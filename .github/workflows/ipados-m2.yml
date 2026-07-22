@@ -1,0 +1,366 @@
+name: iPadOS M2 Scaffold
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feature/ipados-native-port
+    paths:
+      - .github/workflows/ipados-m2.yml
+      - build/ios/**
+      - docs/ipados/**
+      - libraries/ios/**
+      - scripts/ios/**
+      - source/platform/ios/**
+  pull_request:
+    paths:
+      - .github/workflows/ipados-m2.yml
+      - build/ios/**
+      - docs/ipados/**
+      - libraries/ios/**
+      - scripts/ios/**
+      - source/platform/ios/**
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ipados-m2-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: M2 CI and simulator validation
+    runs-on: macos-15
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: bash
+    env:
+      IPADOS_ARTIFACT_ROOT: ${{ runner.temp }}/ipados-m2-artifacts
+      IPADOS_BUILD_ROOT: ${{ github.workspace }}/build/ios/out/ci
+      IPADOS_DEVICE_DERIVED_DATA: ${{ runner.temp }}/ipados-m2-derived-data/device
+      IPADOS_SIMULATOR_DERIVED_DATA: ${{ runner.temp }}/ipados-m2-derived-data/simulator
+
+    steps:
+      - name: Checkout audited paths without credentials or LFS
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          clean: false
+          fetch-depth: 1
+          lfs: false
+          persist-credentials: false
+          set-safe-directory: false
+          sparse-checkout: |
+            .github/workflows
+            build/ios
+            docs/ipados
+            libraries/ios
+            scripts/ios
+            source/platform/ios
+          sparse-checkout-cone-mode: true
+          submodules: false
+
+      - name: Initialize artifact directories
+        run: |
+          set -euo pipefail
+          mkdir -p \
+            "$IPADOS_ARTIFACT_ROOT/environment" \
+            "$IPADOS_ARTIFACT_ROOT/static" \
+            "$IPADOS_ARTIFACT_ROOT/cmake" \
+            "$IPADOS_ARTIFACT_ROOT/xcode" \
+            "$IPADOS_ARTIFACT_ROOT/device" \
+            "$IPADOS_ARTIFACT_ROOT/simulator"
+
+      - name: Record runner and Apple toolchain environment
+        id: environment
+        run: |
+          set -euo pipefail
+          {
+            uname -a
+            uname -m
+            sw_vers
+            xcode-select -p
+            xcodebuild -version
+            xcrun --sdk iphoneos --show-sdk-version
+            xcrun --sdk iphonesimulator --show-sdk-version
+            cmake --version
+            python3 --version
+            git --version
+            ruby --version
+          } 2>&1 | tee "$IPADOS_ARTIFACT_ROOT/environment/environment-report.txt"
+
+      - name: Parse workflow YAML with the runner YAML parser
+        id: workflow_yaml
+        run: |
+          set -euo pipefail
+          ruby -e 'require "yaml"; YAML.parse_file(ARGV.fetch(0)); puts "PASS: workflow YAML parsed"' \
+            .github/workflows/ipados-m2.yml 2>&1 |
+            tee "$IPADOS_ARTIFACT_ROOT/static/workflow-yaml.txt"
+
+      - name: Verify macOS environment
+        id: mac_environment
+        run: |
+          set -euo pipefail
+          sh scripts/ios/verify-mac-environment.sh 2>&1 |
+            tee "$IPADOS_ARTIFACT_ROOT/static/mac-environment.txt"
+
+      - name: Run repository static checks
+        id: static_checks
+        run: |
+          set -euo pipefail
+          sh scripts/ios/run-static-checks.sh 2>&1 |
+            tee "$IPADOS_ARTIFACT_ROOT/static/static-checks.txt"
+
+      - name: Generate and inspect device and simulator projects
+        id: projects
+        run: |
+          set -euo pipefail
+
+          device_build_directory="$IPADOS_BUILD_ROOT/iphoneos"
+          simulator_build_directory="$IPADOS_BUILD_ROOT/iphonesimulator"
+          device_project="$device_build_directory/PyrogenesisIPadShell.xcodeproj"
+          simulator_project="$simulator_build_directory/PyrogenesisIPadShell.xcodeproj"
+
+          sh scripts/ios/generate-xcode-project.sh iphoneos "$device_build_directory" 2>&1 |
+            tee "$IPADOS_ARTIFACT_ROOT/cmake/iphoneos-configure.txt"
+          sh scripts/ios/generate-xcode-project.sh iphonesimulator "$simulator_build_directory" 2>&1 |
+            tee "$IPADOS_ARTIFACT_ROOT/cmake/iphonesimulator-configure.txt"
+
+          test -d "$device_project"
+          test -d "$simulator_project"
+
+          discover_scheme() {
+            project_label=$1
+            project_path=$2
+            list_text="$IPADOS_ARTIFACT_ROOT/xcode/${project_label}-list.txt"
+            list_json="$IPADOS_ARTIFACT_ROOT/xcode/${project_label}-list.json"
+
+            xcodebuild -list -project "$project_path" 2>&1 | tee "$list_text" >&2
+            xcodebuild -list -json -project "$project_path" > "$list_json"
+            python3 - "$list_json" <<'PY'
+          import json
+          import sys
+
+          with open(sys.argv[1], encoding="utf-8") as handle:
+              payload = json.load(handle)
+          container = payload.get("project") or payload.get("workspace") or {}
+          ignored = {"ALL_BUILD", "RUN_TESTS", "ZERO_CHECK"}
+          schemes = [scheme for scheme in container.get("schemes", []) if scheme not in ignored]
+          if len(schemes) != 1:
+              raise SystemExit(f"expected exactly one application scheme, found: {schemes}")
+          print(schemes[0])
+          PY
+          }
+
+          device_scheme=$(discover_scheme iphoneos "$device_project")
+          simulator_scheme=$(discover_scheme iphonesimulator "$simulator_project")
+
+          xcodebuild -showBuildSettings -project "$device_project" -scheme "$device_scheme" \
+            -destination 'generic/platform=iOS' 2>&1 |
+            tee "$IPADOS_ARTIFACT_ROOT/xcode/iphoneos-build-settings.txt"
+          xcodebuild -showBuildSettings -json -project "$device_project" -scheme "$device_scheme" \
+            -destination 'generic/platform=iOS' \
+            > "$IPADOS_ARTIFACT_ROOT/xcode/iphoneos-build-settings.json"
+          xcodebuild -showBuildSettings -project "$simulator_project" -scheme "$simulator_scheme" \
+            -destination 'generic/platform=iOS Simulator' 2>&1 |
+            tee "$IPADOS_ARTIFACT_ROOT/xcode/iphonesimulator-build-settings.txt"
+          xcodebuild -showBuildSettings -json -project "$simulator_project" -scheme "$simulator_scheme" \
+            -destination 'generic/platform=iOS Simulator' \
+            > "$IPADOS_ARTIFACT_ROOT/xcode/iphonesimulator-build-settings.json"
+
+          {
+            printf 'device_project=build/ios/out/ci/iphoneos/PyrogenesisIPadShell.xcodeproj\n'
+            printf 'device_scheme=%s\n' "$device_scheme"
+            printf 'simulator_project=build/ios/out/ci/iphonesimulator/PyrogenesisIPadShell.xcodeproj\n'
+            printf 'simulator_scheme=%s\n' "$simulator_scheme"
+          } | tee "$IPADOS_ARTIFACT_ROOT/xcode/generated-projects.txt"
+
+          {
+            printf 'device_project=%s\n' "$device_project"
+            printf 'device_scheme=%s\n' "$device_scheme"
+            printf 'simulator_project=%s\n' "$simulator_project"
+            printf 'simulator_scheme=%s\n' "$simulator_scheme"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Validate generated Xcode metadata
+        id: metadata
+        run: |
+          set -euo pipefail
+          python3 - \
+            "$IPADOS_ARTIFACT_ROOT/xcode/iphoneos-build-settings.json" \
+            "$IPADOS_ARTIFACT_ROOT/xcode/iphonesimulator-build-settings.json" <<'PY' |
+            tee "$IPADOS_ARTIFACT_ROOT/xcode/metadata-validation.txt"
+          import json
+          import sys
+
+          for label, path in zip(("iphoneos", "iphonesimulator"), sys.argv[1:]):
+              with open(path, encoding="utf-8") as handle:
+                  payload = json.load(handle)
+              if len(payload) != 1:
+                  raise SystemExit(f"{label}: expected one target build-settings record")
+              settings = payload[0].get("buildSettings", {})
+              if settings.get("PRODUCT_NAME") != "Pyrogenesis iPad Shell":
+                  raise SystemExit(f"{label}: unexpected PRODUCT_NAME={settings.get('PRODUCT_NAME')!r}")
+              if settings.get("TARGETED_DEVICE_FAMILY") != "2":
+                  raise SystemExit(f"{label}: TARGETED_DEVICE_FAMILY is not iPad-only")
+              if "arm64" not in settings.get("ARCHS", "").split():
+                  raise SystemExit(f"{label}: arm64 is absent from ARCHS")
+              if settings.get("DEVELOPMENT_TEAM", ""):
+                  raise SystemExit(f"{label}: DEVELOPMENT_TEAM must remain empty")
+              if settings.get("CODE_SIGN_ENTITLEMENTS", ""):
+                  raise SystemExit(f"{label}: unexpected entitlements file is configured")
+              print(f"PASS: {label} product, iPad family, arm64, Team, and entitlements metadata")
+          PY
+
+          if grep -R -E -i \
+            'DEVELOPMENT_TEAM = [A-Z0-9]{10}|SDL|SpiderMonkey|mozjs|MoltenVK|OpenAL|binaries/data' \
+            "$IPADOS_BUILD_ROOT/iphoneos/PyrogenesisIPadShell.xcodeproj" \
+            "$IPADOS_BUILD_ROOT/iphonesimulator/PyrogenesisIPadShell.xcodeproj"
+          then
+            echo "error: signing identity, engine, game data, or prohibited third-party reference found." >&2
+            exit 1
+          fi
+
+      - name: Compile unsigned iPhoneOS device-SDK product
+        id: device_compile
+        run: |
+          set -euo pipefail
+          project="${{ steps.projects.outputs.device_project }}"
+          scheme="${{ steps.projects.outputs.device_scheme }}"
+          build_log="$IPADOS_ARTIFACT_ROOT/device/xcodebuild.txt"
+
+          printf 'xcodebuild -project "%s" -scheme "%s" -configuration Debug -sdk iphoneos -destination "generic/platform=iOS" -derivedDataPath "%s" CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO build\n' \
+            "$project" "$scheme" "$IPADOS_DEVICE_DERIVED_DATA" \
+            > "$IPADOS_ARTIFACT_ROOT/device/build-command.txt"
+          cat "$IPADOS_ARTIFACT_ROOT/device/build-command.txt"
+
+          if xcodebuild \
+            -project "$project" \
+            -scheme "$scheme" \
+            -configuration Debug \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath "$IPADOS_DEVICE_DERIVED_DATA" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            build > "$build_log" 2>&1
+          then
+            build_status=0
+          else
+            build_status=$?
+          fi
+          cat "$build_log"
+          if [ "$build_status" -ne 0 ]; then
+            exit "$build_status"
+          fi
+
+          app_path=$(python3 - "$IPADOS_DEVICE_DERIVED_DATA" <<'PY'
+          from pathlib import Path
+          import sys
+
+          root = Path(sys.argv[1]) / "Build" / "Products" / "Debug-iphoneos"
+          apps = sorted(path for path in root.glob("*.app") if path.is_dir())
+          if len(apps) != 1:
+              raise SystemExit(f"expected one device-SDK app under {root}, found {len(apps)}")
+          print(apps[0])
+          PY
+          )
+          info_plist="$app_path/Info.plist"
+          signing_material=$(find "$app_path" -type f \
+            \( -name '*.mobileprovision' -o -name '*.p12' -o -name '*.cer' \))
+          if [ -n "$signing_material" ]; then
+            printf '%s\n' "$signing_material" >&2
+            echo "error: signing or certificate material exists in the unsigned device-SDK product." >&2
+            exit 1
+          fi
+          executable=$(plutil -extract CFBundleExecutable raw -o - "$info_plist")
+
+          cp "$info_plist" "$IPADOS_ARTIFACT_ROOT/device/Info.plist"
+          plutil -p "$info_plist" > "$IPADOS_ARTIFACT_ROOT/device/info-plist.txt"
+          otool -L "$app_path/$executable" > "$IPADOS_ARTIFACT_ROOT/device/linked-frameworks.txt"
+          if grep -E -i 'SDL|SpiderMonkey|mozjs|MoltenVK|OpenAL|binaries/data' \
+            "$IPADOS_ARTIFACT_ROOT/device/linked-frameworks.txt"
+          then
+            echo "error: prohibited engine or third-party linkage found in device-SDK product." >&2
+            exit 1
+          fi
+
+          printf 'product=%s\n' "$app_path" > "$IPADOS_ARTIFACT_ROOT/device/product-path.txt"
+          tar -czf "$IPADOS_ARTIFACT_ROOT/device/unsigned-device-sdk-app.tar.gz" \
+            -C "$(dirname -- "$app_path")" "$(basename -- "$app_path")"
+
+      - name: Build and smoke-test an iPad Simulator dynamically
+        id: simulator_smoke
+        run: |
+          set -euo pipefail
+          smoke_log="$IPADOS_ARTIFACT_ROOT/simulator/runner.txt"
+          if sh scripts/ios/run-ci-simulator-smoke.sh \
+            "${{ steps.projects.outputs.simulator_project }}" \
+            "${{ steps.projects.outputs.simulator_scheme }}" \
+            "$IPADOS_ARTIFACT_ROOT" \
+            "$IPADOS_SIMULATOR_DERIVED_DATA" > "$smoke_log" 2>&1
+          then
+            smoke_status=0
+          else
+            smoke_status=$?
+          fi
+          cat "$smoke_log"
+          exit "$smoke_status"
+
+      - name: Write workflow result summary
+        if: ${{ always() }}
+        env:
+          ENVIRONMENT_OUTCOME: ${{ steps.environment.outcome }}
+          WORKFLOW_YAML_OUTCOME: ${{ steps.workflow_yaml.outcome }}
+          MAC_ENVIRONMENT_OUTCOME: ${{ steps.mac_environment.outcome }}
+          STATIC_CHECKS_OUTCOME: ${{ steps.static_checks.outcome }}
+          PROJECTS_OUTCOME: ${{ steps.projects.outcome }}
+          METADATA_OUTCOME: ${{ steps.metadata.outcome }}
+          DEVICE_COMPILE_OUTCOME: ${{ steps.device_compile.outcome }}
+          SIMULATOR_SMOKE_OUTCOME: ${{ steps.simulator_smoke.outcome }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$IPADOS_ARTIFACT_ROOT"
+          m2_ci=FAIL
+          if [ "$ENVIRONMENT_OUTCOME" = success ] && \
+            [ "$WORKFLOW_YAML_OUTCOME" = success ] && \
+            [ "$MAC_ENVIRONMENT_OUTCOME" = success ] && \
+            [ "$STATIC_CHECKS_OUTCOME" = success ] && \
+            [ "$PROJECTS_OUTCOME" = success ] && \
+            [ "$METADATA_OUTCOME" = success ] && \
+            [ "$DEVICE_COMPILE_OUTCOME" = success ]
+          then
+            m2_ci=PASS
+          fi
+
+          m2_simulator=FAIL
+          if [ "$SIMULATOR_SMOKE_OUTCOME" = success ]; then
+            m2_simulator=PASS
+          fi
+
+          {
+            printf 'M2-CI=%s\n' "$m2_ci"
+            printf 'M2-Simulator=%s\n' "$m2_simulator"
+            printf 'M2-Device=BLOCKED (not attempted by this unsigned workflow)\n'
+            printf 'M2 overall=INCOMPLETE\n'
+            printf 'environment=%s\n' "$ENVIRONMENT_OUTCOME"
+            printf 'workflow_yaml=%s\n' "$WORKFLOW_YAML_OUTCOME"
+            printf 'mac_environment=%s\n' "$MAC_ENVIRONMENT_OUTCOME"
+            printf 'static_checks=%s\n' "$STATIC_CHECKS_OUTCOME"
+            printf 'projects=%s\n' "$PROJECTS_OUTCOME"
+            printf 'metadata=%s\n' "$METADATA_OUTCOME"
+            printf 'device_compile=%s\n' "$DEVICE_COMPILE_OUTCOME"
+            printf 'simulator_smoke=%s\n' "$SIMULATOR_SMOKE_OUTCOME"
+          } | tee "$IPADOS_ARTIFACT_ROOT/workflow-summary.txt"
+          cat "$IPADOS_ARTIFACT_ROOT/workflow-summary.txt" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload M2 reports and products
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ipados-m2-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/ipados-m2-artifacts
+          if-no-files-found: warn
+          include-hidden-files: false
+          retention-days: 14

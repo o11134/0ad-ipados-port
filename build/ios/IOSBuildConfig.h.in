@@ -1,0 +1,20 @@
+/* Copyright (C) 2026 Wildfire Games.
+ * This file is part of 0 A.D.
+ *
+ * 0 A.D. is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 2 of the License, or
+ * (at your option) any later version.
+ */
+
+#ifndef INCLUDED_IOSBUILDCONFIG
+#define INCLUDED_IOSBUILDCONFIG
+
+#define IPADOS_SOURCE_REVISION "@IPADOS_SOURCE_REVISION@"
+#define IPADOS_DEPLOYMENT_TARGET "@IPADOS_DEPLOYMENT_TARGET@"
+
+#ifndef IPADOS_BUILD_CONFIGURATION
+#define IPADOS_BUILD_CONFIGURATION "unknown"
+#endif
+
+#endif // INCLUDED_IOSBUILDCONFIG
