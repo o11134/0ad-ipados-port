@@ -195,8 +195,7 @@ jobs:
           set -euo pipefail
           python3 - \
             "$IPADOS_ARTIFACT_ROOT/xcode/iphoneos-build-settings.json" \
-            "$IPADOS_ARTIFACT_ROOT/xcode/iphonesimulator-build-settings.json" <<'PY' |
-            tee "$IPADOS_ARTIFACT_ROOT/xcode/metadata-validation.txt"
+            "$IPADOS_ARTIFACT_ROOT/xcode/iphonesimulator-build-settings.json" <<'PY' | tee "$IPADOS_ARTIFACT_ROOT/xcode/metadata-validation.txt"
           import json
           import sys
 
