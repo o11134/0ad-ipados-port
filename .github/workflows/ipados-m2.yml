@@ -37,10 +37,7 @@ jobs:
       run:
         shell: bash
     env:
-      IPADOS_ARTIFACT_ROOT: ${{ runner.temp }}/ipados-m2-artifacts
       IPADOS_BUILD_ROOT: ${{ github.workspace }}/build/ios/out/ci
-      IPADOS_DEVICE_DERIVED_DATA: ${{ runner.temp }}/ipados-m2-derived-data/device
-      IPADOS_SIMULATOR_DERIVED_DATA: ${{ runner.temp }}/ipados-m2-derived-data/simulator
 
     steps:
       - name: Checkout audited paths without credentials or LFS
@@ -60,6 +57,15 @@ jobs:
             source/platform/ios
           sparse-checkout-cone-mode: true
           submodules: false
+
+      - name: Initialize CI paths
+        run: |
+          set -euo pipefail
+          {
+            echo "IPADOS_ARTIFACT_ROOT=$RUNNER_TEMP/ipados-m2-artifacts"
+            echo "IPADOS_DEVICE_DERIVED_DATA=$RUNNER_TEMP/ipados-m2-derived-data/device"
+            echo "IPADOS_SIMULATOR_DERIVED_DATA=$RUNNER_TEMP/ipados-m2-derived-data/simulator"
+          } >> "$GITHUB_ENV"
 
       - name: Initialize artifact directories
         run: |
