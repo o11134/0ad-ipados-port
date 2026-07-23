@@ -62,6 +62,7 @@ target_compile_options(PyrogenesisIPadShell PRIVATE -Wall -Wextra -Wpedantic)
 target_compile_definitions(PyrogenesisIPadShell PRIVATE
 	"IPADOS_BUILD_CONFIGURATION=\"$<CONFIG>\"")
 target_link_libraries(PyrogenesisIPadShell PRIVATE
+	"-framework CoreGraphics"
 	"-framework Foundation"
 	"-framework QuartzCore"
 	"-framework UIKit")
