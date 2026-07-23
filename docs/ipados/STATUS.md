@@ -7,14 +7,16 @@ historical provenance; live publication and run state belongs to the standalone 
 - **M0: complete with CONDITIONAL GO.** The audit is documented and cross-reviewed; Apple-only
   validation remains unavailable on this host.
 - **M1: incomplete and blocked on this host.** No supported desktop baseline or CxxTest run exists.
-- **M2-CI: PENDING.** The GitHub Actions macOS workflow is included in the standalone export, but no
-  successful run evidence existed when the export commit was prepared.
-- **M2-Simulator: PENDING.** No simulator build/install/launch markers or retained run logs exist.
-- **M2-Device: BLOCKED (validation pending).** No local Mac/device Xcode connection or authorized
-  signed distribution route exists.
-- **Overall M2: INCOMPLETE.** A CI or simulator pass would not complete physical-device validation.
-- **M3 and later: not started.** No engine, SpiderMonkey, graphics, data, audio, touch, or networking
-  integration was added.
+- **M2-CI: PASS.** GitHub Actions run 30053407913 compiled and linked the unsigned iphoneos product
+  successfully on a macos-15 ARM64 runner (Xcode 16.4, SDK 18.5, CMake 4.4.0).
+- **M2-Simulator: PASS.** The same run built, installed, launched, and observed `M2_SHELL_LAUNCHED`
+  and `M2_SANDBOX_PROBE_PASS` markers on an iPad Pro 13-inch (M5) simulator with iOS 26.2.
+- **M2-Device: NOT TESTED (DEFERRED).** No physical Mac/device Xcode connection or authorized
+  signed distribution route exists. Must be completed before any release or public device claim.
+- **Overall M2: INCOMPLETE.** M2-Device remains unvalidated.
+- **M3-A: PENDING.** Upstream source bootstrap workflow is authored but not yet run.
+- **M3 engine integration: NOT STARTED.** No engine, SpiderMonkey, graphics, data, audio, touch, or
+  networking integration was added.
 
 # Repository identity
 

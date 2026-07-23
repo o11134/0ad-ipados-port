@@ -49,13 +49,25 @@ UIKit app target. Validation is split into non-interchangeable tracks:
   landscape diagnostics and safe areas, exercise the manual sandbox button and lifecycle transitions,
   and retain logs. CI never attempts this track.
 
-Current result: **M2-CI PENDING**, **M2-Simulator PENDING**, and **M2-Device BLOCKED (validation
-pending)**. The workflow is included in the standalone export, but no successful run evidence was
-available when the export was prepared. Overall M2 remains incomplete, and M3 must not begin.
+Current result: **M2-CI PASS** (run 30053407913), **M2-Simulator PASS** (same run), and
+**M2-Device NOT TESTED (DEFERRED)**. Overall M2 remains incomplete until physical-device validation.
 
 Rollback: revert the dedicated scaffold and CI commits; do not delete unrelated upstream paths.
 
-### M3 — core engine bootstrap
+### M3-A — upstream source bootstrap
+
+Fetch the pinned upstream revision into a temporary CI workspace using a blob-filtered, sparse
+checkout (source, build, libraries, docs only). Verify the exact commit, required source files,
+and absence of LFS/game data. No compilation, no engine integration.
+
+Acceptance: upstream HEAD matches the pinned commit, all M0-identified critical files are present,
+`binaries/data` is absent, no LFS objects are downloaded.
+
+Current result: **M3-A PENDING.** Workflow authored but not yet run.
+
+Rollback: delete the M3 workflow and staging script; no engine files are committed.
+
+### M3-B — core engine bootstrap
 
 Add `OS_IOS` without changing macOS classification; add iOS source selection and a narrow platform
 bridge. Link the smallest core closure with audio, Atlas, lobby, DAP, miniupnpc, NVTT, and Collada

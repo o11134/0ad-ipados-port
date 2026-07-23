@@ -1,0 +1,61 @@
+name: iPadOS M3 Upstream Bootstrap
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feature/ipados-native-port
+    paths:
+      - .github/workflows/ipados-m3-upstream.yml
+      - scripts/ios/prepare-upstream-source.sh
+      - UPSTREAM_REVISION
+  pull_request:
+    paths:
+      - .github/workflows/ipados-m3-upstream.yml
+      - scripts/ios/prepare-upstream-source.sh
+      - UPSTREAM_REVISION
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ipados-m3-upstream-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  upstream-bootstrap:
+    name: M3 upstream source staging
+    runs-on: macos-15
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Checkout port repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          clean: false
+          fetch-depth: 1
+          lfs: false
+          persist-credentials: false
+          set-safe-directory: false
+          sparse-checkout: |
+            scripts/ios
+            UPSTREAM_REVISION
+          sparse-checkout-cone-mode: true
+          submodules: false
+
+      - name: Prepare upstream source workspace
+        run: |
+          set -euo pipefail
+          sh scripts/ios/prepare-upstream-source.sh 2>&1 | tee "$RUNNER_TEMP/m3-upstream-manifest.txt"
+
+      - name: Upload M3 upstream manifest
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ipados-m3-upstream-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/m3-upstream-manifest.txt
+          if-no-files-found: warn
+          retention-days: 14
