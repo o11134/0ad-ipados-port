@@ -260,17 +260,31 @@ jobs:
             exit "$build_status"
           fi
 
-          app_path=$(python3 - "$IPADOS_DEVICE_DERIVED_DATA" <<'PY'
-          from pathlib import Path
-          import sys
-
-          root = Path(sys.argv[1]) / "Build" / "Products" / "Debug-iphoneos"
-          apps = sorted(path for path in root.glob("*.app") if path.is_dir())
-          if len(apps) != 1:
-              raise SystemExit(f"expected one device-SDK app under {root}, found {len(apps)}")
-          print(apps[0])
-          PY
-          )
+          device_build_settings="$IPADOS_ARTIFACT_ROOT/device/build-settings.txt"
+          xcodebuild -showBuildSettings \
+            -project "$project" \
+            -scheme "$scheme" \
+            -configuration Debug \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath "$IPADOS_DEVICE_DERIVED_DATA" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            > "$device_build_settings" 2>/dev/null
+          target_build_dir=$(sed -n 's/^ *TARGET_BUILD_DIR = //p' "$device_build_settings")
+          wrapper_name=$(sed -n 's/^ *WRAPPER_NAME = //p' "$device_build_settings")
+          if [ -z "$target_build_dir" ] || [ -z "$wrapper_name" ]; then
+            echo "error: could not extract TARGET_BUILD_DIR or WRAPPER_NAME from device build settings." >&2
+            exit 1
+          fi
+          app_path="$target_build_dir/$wrapper_name"
+          if [ ! -d "$app_path" ]; then
+            echo "error: resolved device app path does not exist: $app_path" >&2
+            exit 1
+          fi
+          printf 'TARGET_BUILD_DIR=%s\nWRAPPER_NAME=%s\nAPP_PATH=%s\n' \
+            "$target_build_dir" "$wrapper_name" "$app_path" \
+            > "$IPADOS_ARTIFACT_ROOT/device/product-discovery.txt"
           info_plist="$app_path/Info.plist"
           signing_material=$(find "$app_path" -type f \
             \( -name '*.mobileprovision' -o -name '*.p12' -o -name '*.cer' \))

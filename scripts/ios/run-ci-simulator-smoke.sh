@@ -269,17 +269,31 @@ if [ "$SIMULATOR_BUILD_STATUS" -ne 0 ]; then
 	exit "$SIMULATOR_BUILD_STATUS"
 fi
 
-APP_PATH=$(python3 - "$DERIVED_DATA_DIRECTORY" <<'PY'
-from pathlib import Path
-import sys
-
-root = Path(sys.argv[1]) / "Build" / "Products" / "Debug-iphonesimulator"
-apps = sorted(path for path in root.glob("*.app") if path.is_dir())
-if len(apps) != 1:
-    raise SystemExit(f"expected one simulator app under {root}, found {len(apps)}")
-print(apps[0])
-PY
-)
+SIMULATOR_BUILD_SETTINGS="$SIMULATOR_ARTIFACT_DIRECTORY/build-settings.txt"
+xcodebuild -showBuildSettings \
+	-project "$PROJECT_PATH" \
+	-scheme "$SCHEME" \
+	-configuration Debug \
+	-sdk iphonesimulator \
+	-destination "$DESTINATION" \
+	-derivedDataPath "$DERIVED_DATA_DIRECTORY" \
+	CODE_SIGNING_ALLOWED=NO \
+	CODE_SIGNING_REQUIRED=NO \
+	> "$SIMULATOR_BUILD_SETTINGS" 2>/dev/null
+TARGET_BUILD_DIR=$(sed -n 's/^ *TARGET_BUILD_DIR = //p' "$SIMULATOR_BUILD_SETTINGS")
+WRAPPER_NAME=$(sed -n 's/^ *WRAPPER_NAME = //p' "$SIMULATOR_BUILD_SETTINGS")
+if [ -z "$TARGET_BUILD_DIR" ] || [ -z "$WRAPPER_NAME" ]; then
+	echo "error: could not extract TARGET_BUILD_DIR or WRAPPER_NAME from simulator build settings." >&2
+	exit 1
+fi
+APP_PATH="$TARGET_BUILD_DIR/$WRAPPER_NAME"
+if [ ! -d "$APP_PATH" ]; then
+	echo "error: resolved simulator app path does not exist: $APP_PATH" >&2
+	exit 1
+fi
+printf 'TARGET_BUILD_DIR=%s\nWRAPPER_NAME=%s\nAPP_PATH=%s\n' \
+	"$TARGET_BUILD_DIR" "$WRAPPER_NAME" "$APP_PATH" \
+	> "$SIMULATOR_ARTIFACT_DIRECTORY/product-discovery.txt"
 INFO_PLIST="$APP_PATH/Info.plist"
 if [ ! -f "$INFO_PLIST" ]; then
 	echo "error: generated simulator Info.plist is missing." >&2
