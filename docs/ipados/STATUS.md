@@ -16,7 +16,7 @@ historical provenance; live publication and run state belongs to the standalone 
 - **Overall M2: INCOMPLETE.** M2-Device remains unvalidated.
 - **M3-A: PASS.** Upstream source bootstrap (run 30055025293): clone, sparse checkout, exact HEAD
   verification, 16/16 required files, no LFS objects, 61 MB workspace.
-- **M3-B: PENDING.** Platform detection patch and probe workflow authored but not yet run.
+- **M3-B: FAIL / FIX IN PROGRESS.** The Python-based patcher failed on the real upstream `os.h` and is being replaced by a deterministic unified diff.
 - **M3 engine runtime: NOT STARTED.** No engine, SpiderMonkey, graphics, data, audio, touch, or
   networking integration was added.
 

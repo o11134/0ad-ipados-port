@@ -32,14 +32,15 @@ loading, and desktop path logic — none of which are valid on iOS.
 
 ## The patch
 
-`patches/upstream/0001-sysdep-detect-ios-platform.py` modifies `source/lib/sysdep/os.h` to:
+`patches/upstream/0001-sysdep-detect-ios-platform.patch` will modify `source/lib/sysdep/os.h` to:
 
-1. Include `<TargetConditionals.h>` inside the `__APPLE__` block.
+1. Include `<TargetConditionals.h>` inside the Apple Mach block.
 2. Check `TARGET_OS_IPHONE` (which is 1 for both iOS device and iOS Simulator).
 3. Define `OS_IOS 1` when `TARGET_OS_IPHONE` is true, `OS_MACOSX 1` otherwise.
 4. Add `OS_IOS` to the `OS_UNIX` condition so POSIX code paths remain available.
 
-The patch is idempotent: running it on an already-patched file is a no-op.
+The patch is intended to be deterministic: `git apply --check` must succeed before application,
+and a second `git apply --check` after application must fail because the patch is already applied.
 
 ## TargetConditionals behavior
 
@@ -66,14 +67,18 @@ The simulator runs on a Mac host but compiles for the iOS target; host != target
 `os.h` and `arch.h` headers and prints all platform macros to stdout and the unified log.
 It is built by `build/ios/probe/CMakeLists.txt` against the patched upstream workspace.
 
-## What M3-B proved
+## What M3-B currently shows
 
-- The pinned upstream revision's `os.h` classifies iOS as macOS (confirmed by patch application).
-- The patch applies cleanly and is idempotent.
-- The patched `os.h` compiles for both `iphoneos` and `iphonesimulator` ARM64.
-- The platform probe launches on an iPad Simulator and reports:
-  - `OS_IOS=1`, `OS_MACOSX=0`, `OS_UNIX=1`, `ARCH_ARM64=1`.
-- macOS classification is not broken by the patch (macOS takes the `#else` branch).
+- The pinned upstream revision's `os.h` does not match the old Python regex-based patcher.
+- The real upstream context captured in run `30057265615` shows:
+  - `64:#if (defined(__APPLE__) && defined(__MACH__))`
+  - `65:# define OS_MACOSX 1`
+  - `67:# define OS_MACOSX 0`
+  - `110:#if OS_LINUX || OS_MACOSX || OS_BSD || OS_SOLARIS`
+  - `111:# undef OS_UNIX`
+  - `112:# define OS_UNIX 1`
+- The earlier Python patcher failed with `error: could not locate the __APPLE__ / OS_MACOSX block`.
+- No iPhoneOS compile, simulator compile, or simulator launch evidence exists yet for the unified patch.
 
 ## What M3-B did not prove
 

@@ -31,16 +31,19 @@ fi
 printf 'PASS: upstream HEAD matches pinned commit %s\n' "$EXPECTED_COMMIT"
 
 APPLIED_COUNT=0
-for patch_script in "$PATCHES_DIR"/*.py; do
-	[ -f "$patch_script" ] || continue
-	patch_name=$(basename -- "$patch_script")
+for patch_file in "$PATCHES_DIR"/*.patch; do
+	[ -f "$patch_file" ] || continue
+	patch_name=$(basename -- "$patch_file")
 	printf 'applying: %s\n' "$patch_name"
-	if python3 "$patch_script" "$WORKSPACE_ROOT"; then
-		APPLIED_COUNT=$((APPLIED_COUNT + 1))
-	else
-		echo "error: patch failed: $patch_name" >&2
+	if ! git -C "$WORKSPACE_ROOT" apply --check "$patch_file"; then
+		echo "error: patch does not apply cleanly: $patch_name" >&2
 		exit 1
 	fi
+	if ! git -C "$WORKSPACE_ROOT" apply "$patch_file"; then
+		echo "error: patch application failed: $patch_name" >&2
+		exit 1
+	fi
+	APPLIED_COUNT=$((APPLIED_COUNT + 1))
 done
 
 if [ "$APPLIED_COUNT" -eq 0 ]; then

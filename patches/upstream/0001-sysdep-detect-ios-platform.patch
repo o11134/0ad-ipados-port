@@ -1,0 +1,22 @@
+--- a/source/lib/sysdep/os.h
++++ b/source/lib/sysdep/os.h
+@@ -1,11 +1,16 @@
+ #if (defined(__APPLE__) && defined(__MACH__))
+-# define OS_MACOSX 1
++# include <TargetConditionals.h>
++# if TARGET_OS_IPHONE
++#  define OS_IOS 1
++# else
++#  define OS_MACOSX 1
++# endif
+ #else
+ # define OS_MACOSX 0
+ #endif
+ 
+ // convenience: additionally set OS_UNIX for Unix-based OSes
+-#if OS_LINUX || OS_MACOSX || OS_BSD || OS_SOLARIS
++#if OS_LINUX || OS_MACOSX || OS_BSD || OS_SOLARIS || OS_IOS
+ # undef OS_UNIX
+ # define OS_UNIX 1
+ #endif
+

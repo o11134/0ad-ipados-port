@@ -462,6 +462,24 @@ else
 	Write-Pass 'scripts/ios contain no download, remote script, or Git LFS command'
 }
 
+$patchFile = Join-Path $RepositoryRoot 'patches\upstream\0001-sysdep-detect-ios-platform.patch'
+$pythonPatcher = Join-Path $RepositoryRoot 'patches\upstream\0001-sysdep-detect-ios-platform.py'
+$applyScript = Join-Path $RepositoryRoot 'scripts\ios\apply-upstream-patches.sh'
+if ((Test-Path -LiteralPath $patchFile) -and
+	-not (Test-Path -LiteralPath $pythonPatcher) -and
+	((Select-String -LiteralPath $applyScript -SimpleMatch 'git apply --check').Count -gt 0) -and
+	((Select-String -LiteralPath $applyScript -SimpleMatch '/*.patch').Count -gt 0) -and
+	((Select-String -LiteralPath $applyScript -SimpleMatch '--3way').Count -eq 0) -and
+	((Select-String -LiteralPath $applyScript -SimpleMatch 'fuzzy').Count -eq 0) -and
+	((Select-String -LiteralPath $applyScript -SimpleMatch 'patch -F').Count -eq 0))
+{
+	Write-Pass 'upstream patching is deterministic and unified-diff based'
+}
+else
+{
+	Write-Fail 'deterministic unified patching checks failed'
+}
+
 $cmakeText = Get-Content -LiteralPath (Join-Path $RepositoryRoot 'build\ios\CMakeLists.txt') -Raw
 if ($cmakeText.Contains('set(IPADOS_BUNDLE_IDENTIFIER "org.example.pyrogenesis.ipadshell"') -and
 	$cmakeText.Contains('set(IPADOS_PRODUCT_NAME "Pyrogenesis iPad Shell"'))

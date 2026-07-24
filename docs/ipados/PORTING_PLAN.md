@@ -78,9 +78,9 @@ Acceptance: patched `os.h` compiles for iphoneos and iphonesimulator ARM64; simu
 reports `OS_IOS=1`, `OS_MACOSX=0`, `OS_UNIX=1`, `ARCH_ARM64=1`; macOS classification is
 unchanged.
 
-Current result: **M3-B PENDING.** Workflow authored but not yet run.
+Current result: **M3-B FAIL / FIX IN PROGRESS.** The deterministic unified diff patch and its workflow checks are being introduced against the pinned upstream revision.
 
-Rollback: delete the patch, probe, and M3 platform workflow; upstream workspace is ephemeral.
+Rollback: delete the unified patch, probe, workflow validation step, and M3 platform workflow; upstream workspace is ephemeral.
 
 ### M3-C — core engine bootstrap
 

@@ -76,21 +76,20 @@ jobs:
           set -euo pipefail
           sh scripts/ios/prepare-upstream-source.sh 2>&1 | tee "$IPADOS_ARTIFACT_ROOT/upstream-prepare.txt"
 
-      - name: Capture upstream os.h context
-        run: |
-          set -euo pipefail
-          git -C "$IPADOS_UPSTREAM_WORKSPACE" rev-parse HEAD | tee "$IPADOS_ARTIFACT_ROOT/upstream-head.txt"
-          {
-            printf 'context around __APPLE__ / OS_MACOSX / OS_UNIX\n'
-            grep -n -E '__APPLE__|OS_MACOSX|OS_UNIX|TargetConditionals' \
-              "$IPADOS_UPSTREAM_WORKSPACE/source/lib/sysdep/os.h" || true
-          } | tee "$IPADOS_ARTIFACT_ROOT/upstream-os-context.txt"
-
       - name: Apply upstream patches
         run: |
           set -euo pipefail
           sh scripts/ios/apply-upstream-patches.sh "$IPADOS_UPSTREAM_WORKSPACE" 2>&1 |
             tee "$IPADOS_ARTIFACT_ROOT/patch-application.txt"
+
+      - name: Validate patch cannot be applied twice
+        run: |
+          set -euo pipefail
+          if git -C "$IPADOS_UPSTREAM_WORKSPACE" apply --check patches/upstream/0001-sysdep-detect-ios-platform.patch; then
+            echo "error: patch unexpectedly applies twice" >&2
+            exit 1
+          fi
+          echo "PASS: patch cannot be applied twice"
 
       - name: Verify patched os.h contains OS_IOS
         run: |
@@ -104,6 +103,37 @@ jobs:
           grep -n 'OS_IOS\|OS_MACOSX\|TARGET_OS_IPHONE\|TargetConditionals' \
             "$IPADOS_UPSTREAM_WORKSPACE/source/lib/sysdep/os.h" |
             tee "$IPADOS_ARTIFACT_ROOT/patched-os-h-lines.txt"
+
+      - name: Validate macOS classification
+        run: |
+          set -euo pipefail
+          macos_check="$RUNNER_TEMP/macos-platform-check.mm"
+          cat > "$macos_check" <<'EOF'
+          #include "lib/sysdep/os.h"
+          #include "lib/sysdep/arch.h"
+
+          #if !defined(OS_MACOSX) || !OS_MACOSX
+          #error OS_MACOSX must be 1 on macOS
+          #endif
+
+          #ifdef OS_IOS
+          #error OS_IOS must not be defined on macOS
+          #endif
+
+          #if !defined(OS_UNIX) || !OS_UNIX
+          #error OS_UNIX must be 1 on macOS
+          #endif
+
+          int main()
+          {
+            return 0;
+          }
+          EOF
+          xcrun clang++ -std=c++17 -fsyntax-only -x objective-c++ \
+            -isysroot "$(xcrun --sdk macosx --show-sdk-path)" \
+            -I "$IPADOS_UPSTREAM_WORKSPACE/source" \
+            "$macos_check"
+          echo "PASS: macOS classification reports OS_MACOSX=1, OS_IOS=0, OS_UNIX=1"
 
       - name: Generate device probe project
         run: |

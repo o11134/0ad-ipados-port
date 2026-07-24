@@ -239,6 +239,18 @@ else
 	pass "scripts/ios contain no download, remote script, or Git LFS command"
 fi
 
+if [ -f "$REPOSITORY_ROOT/patches/upstream/0001-sysdep-detect-ios-platform.patch" ] &&
+	[ ! -e "$REPOSITORY_ROOT/patches/upstream/0001-sysdep-detect-ios-platform.py" ] &&
+	grep -F 'git apply --check' "$REPOSITORY_ROOT/scripts/ios/apply-upstream-patches.sh" >/dev/null &&
+	grep -F '/*.patch' "$REPOSITORY_ROOT/scripts/ios/apply-upstream-patches.sh" >/dev/null &&
+	! grep -F -- '--3way' "$REPOSITORY_ROOT/scripts/ios/apply-upstream-patches.sh" >/dev/null &&
+	! grep -F 'fuzzy' "$REPOSITORY_ROOT/scripts/ios/apply-upstream-patches.sh" >/dev/null &&
+	! grep -F 'patch -F' "$REPOSITORY_ROOT/scripts/ios/apply-upstream-patches.sh" >/dev/null; then
+	pass "upstream patching is deterministic and unified-diff based"
+else
+	fail "deterministic unified patching checks failed"
+fi
+
 if grep -F 'set(IPADOS_BUNDLE_IDENTIFIER "org.example.pyrogenesis.ipadshell"' \
 	"$REPOSITORY_ROOT/build/ios/CMakeLists.txt" >/dev/null &&
 	grep -F 'set(IPADOS_PRODUCT_NAME "Pyrogenesis iPad Shell"' \
