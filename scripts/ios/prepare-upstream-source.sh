@@ -28,6 +28,9 @@ printf 'workspace_root=%s\n' "$WORKSPACE_ROOT"
 rm -rf "$WORKSPACE_ROOT"
 mkdir -p "$WORKSPACE_ROOT"
 
+export GIT_LFS_SKIP_SMUDGE=1
+printf 'GIT_LFS_SKIP_SMUDGE=%s\n' "$GIT_LFS_SKIP_SMUDGE"
+
 git clone \
 	--filter=blob:none \
 	--no-checkout \
@@ -70,13 +73,32 @@ printf 'PASS: binaries/data is not materialized\n'
 LFS_STATUS="not-installed"
 if command -v git-lfs >/dev/null 2>&1; then
 	LFS_STATUS="installed-but-not-fetched"
-	if [ -d "$WORKSPACE_ROOT/.git/lfs/objects" ] && [ -n "$(ls -A "$WORKSPACE_ROOT/.git/lfs/objects" 2>/dev/null)" ]; then
-		echo "error: Git LFS objects were downloaded unexpectedly." >&2
-		exit 1
-	fi
+	printf 'git_lfs_version=%s\n' "$(git lfs version 2>/dev/null || printf 'unknown')"
+fi
+
+GIT_LFS_DIRECTORY_PRESENT="no"
+if [ -d "$WORKSPACE_ROOT/.git/lfs" ]; then
+	GIT_LFS_DIRECTORY_PRESENT="yes"
+fi
+printf 'git_lfs_directory_present=%s\n' "$GIT_LFS_DIRECTORY_PRESENT"
+
+LFS_OBJECT_COUNT=0
+if [ -d "$WORKSPACE_ROOT/.git/lfs/objects" ]; then
+	LFS_OBJECT_COUNT=$(find "$WORKSPACE_ROOT/.git/lfs/objects" -type f 2>/dev/null | wc -l | tr -d '[:space:]')
+fi
+case "$LFS_OBJECT_COUNT" in
+	''|*[!0-9]*)
+		LFS_OBJECT_COUNT=0
+		;;
+esac
+printf 'git_lfs_object_file_count=%s\n' "$LFS_OBJECT_COUNT"
+
+if [ "$LFS_OBJECT_COUNT" -ne 0 ]; then
+	echo "error: Git LFS object files were downloaded unexpectedly." >&2
+	exit 1
 fi
 printf 'lfs_status=%s\n' "$LFS_STATUS"
-printf 'PASS: no LFS objects downloaded\n'
+printf 'PASS: no LFS object files downloaded\n'
 
 FAIL_COUNT=0
 for required_path in \
