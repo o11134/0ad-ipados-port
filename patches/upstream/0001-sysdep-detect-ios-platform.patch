@@ -1,22 +1,33 @@
 --- a/source/lib/sysdep/os.h
 +++ b/source/lib/sysdep/os.h
-@@ -1,11 +1,16 @@
+@@ -60,11 +60,19 @@
+ #else
+ # define OS_ANDROID 0
+ #endif
+-// Mac OS X
++// Mac OS X / iOS
  #if (defined(__APPLE__) && defined(__MACH__))
 -# define OS_MACOSX 1
 +# include <TargetConditionals.h>
 +# if TARGET_OS_IPHONE
 +#  define OS_IOS 1
++#  define OS_MACOSX 0
 +# else
++#  define OS_IOS 0
 +#  define OS_MACOSX 1
 +# endif
  #else
  # define OS_MACOSX 0
++# define OS_IOS 0
  #endif
- 
+ // BSD
+ #if defined(__FreeBSD__) || defined(__NetBSD__) || defined(__OpenBSD__) || defined(__FreeBSD_kernel__)
+@@ -107,7 +115,7 @@
  // convenience: additionally set OS_UNIX for Unix-based OSes
+ // note: doing this in an separate section instead of adding the extra define
+ // to all affected OSes saves a few undefs or macro redefinition warnings.
 -#if OS_LINUX || OS_MACOSX || OS_BSD || OS_SOLARIS
 +#if OS_LINUX || OS_MACOSX || OS_BSD || OS_SOLARIS || OS_IOS
  # undef OS_UNIX
  # define OS_UNIX 1
  #endif
-

@@ -467,11 +467,11 @@ $pythonPatcher = Join-Path $RepositoryRoot 'patches\upstream\0001-sysdep-detect-
 $applyScript = Join-Path $RepositoryRoot 'scripts\ios\apply-upstream-patches.sh'
 if ((Test-Path -LiteralPath $patchFile) -and
 	-not (Test-Path -LiteralPath $pythonPatcher) -and
-	((Select-String -LiteralPath $applyScript -SimpleMatch 'git apply --check').Count -gt 0) -and
-	((Select-String -LiteralPath $applyScript -SimpleMatch '/*.patch').Count -gt 0) -and
-	((Select-String -LiteralPath $applyScript -SimpleMatch '--3way').Count -eq 0) -and
-	((Select-String -LiteralPath $applyScript -SimpleMatch 'fuzzy').Count -eq 0) -and
-	((Select-String -LiteralPath $applyScript -SimpleMatch 'patch -F').Count -eq 0))
+	(@(Select-String -LiteralPath $applyScript -SimpleMatch 'apply --check').Count -gt 0) -and
+	(@(Select-String -LiteralPath $applyScript -SimpleMatch '/*.patch').Count -gt 0) -and
+	(@(Select-String -LiteralPath $applyScript -SimpleMatch '--3way').Count -eq 0) -and
+	(@(Select-String -LiteralPath $applyScript -SimpleMatch 'fuzzy').Count -eq 0) -and
+	(@(Select-String -LiteralPath $applyScript -SimpleMatch 'patch -F').Count -eq 0))
 {
 	Write-Pass 'upstream patching is deterministic and unified-diff based'
 }

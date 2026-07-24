@@ -18,31 +18,31 @@ static void PrintProbeResults()
 {
 	printf("PYROGENESIS_PLATFORM_PROBE\n");
 
-#ifdef OS_IOS
+#if OS_IOS
 	printf("OS_IOS=1\n");
 #else
 	printf("OS_IOS=0\n");
 #endif
 
-#ifdef OS_MACOSX
+#if OS_MACOSX
 	printf("OS_MACOSX=1\n");
 #else
 	printf("OS_MACOSX=0\n");
 #endif
 
-#ifdef OS_UNIX
+#if OS_UNIX
 	printf("OS_UNIX=1\n");
 #else
 	printf("OS_UNIX=0\n");
 #endif
 
-#ifdef OS_WIN
+#if OS_WIN
 	printf("OS_WIN=1\n");
 #else
 	printf("OS_WIN=0\n");
 #endif
 
-#ifdef OS_LINUX
+#if OS_LINUX
 	printf("OS_LINUX=1\n");
 #else
 	printf("OS_LINUX=0\n");
@@ -77,17 +77,17 @@ static void PrintProbeResults()
 	fflush(stdout);
 
 	NSLog(@"[Pyrogenesis PlatformProbe] OS_IOS=%d OS_MACOSX=%d OS_UNIX=%d ARCH_ARM64=%d",
-#ifdef OS_IOS
+#if OS_IOS
 		1,
 #else
 		0,
 #endif
-#ifdef OS_MACOSX
+#if OS_MACOSX
 		1,
 #else
 		0,
 #endif
-#ifdef OS_UNIX
+#if OS_UNIX
 		1,
 #else
 		0,

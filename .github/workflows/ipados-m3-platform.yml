@@ -76,36 +76,6 @@ jobs:
           set -euo pipefail
           sh scripts/ios/prepare-upstream-source.sh 2>&1 | tee "$IPADOS_ARTIFACT_ROOT/upstream-prepare.txt"
 
-      - name: Capture upstream os.h context (diagnostic)
-        if: ${{ always() }}
-        run: |
-          set -euo pipefail
-          os_h="$IPADOS_UPSTREAM_WORKSPACE/source/lib/sysdep/os.h"
-          context_out="$IPADOS_ARTIFACT_ROOT/upstream-os-context.txt"
-
-          printf '=== upstream HEAD ===\n'
-          upstream_head=$(git -C "$IPADOS_UPSTREAM_WORKSPACE" rev-parse HEAD)
-          printf 'upstream_head=%s\n' "$upstream_head"
-          if [ "$upstream_head" != "eae57d9aab66511a22a869192b7ec72feeaedc7a" ]; then
-            printf 'WARNING: upstream HEAD does not match expected pinned commit\n'
-          fi
-
-          printf '\n=== full file: source/lib/sysdep/os.h ===\n'
-          cat -n "$os_h"
-
-          printf '\n=== grep context: __APPLE__|OS_MACOSX|OS_UNIX ===\n'
-          grep -n -C 12 -E '__APPLE__|OS_MACOSX|OS_UNIX' "$os_h"
-
-          {
-            printf 'upstream_head=%s\n' "$upstream_head"
-            printf '\n--- full file ---\n'
-            cat -n "$os_h"
-            printf '\n--- grep context ---\n'
-            grep -n -C 12 -E '__APPLE__|OS_MACOSX|OS_UNIX' "$os_h"
-          } > "$context_out"
-
-          echo "PASS: upstream os.h context captured"
-
       - name: Apply upstream patches
         run: |
           set -euo pipefail
@@ -146,8 +116,8 @@ jobs:
           #error OS_MACOSX must be 1 on macOS
           #endif
 
-          #ifdef OS_IOS
-          #error OS_IOS must not be defined on macOS
+          #if OS_IOS
+          #error OS_IOS must be 0 on macOS
           #endif
 
           #if !defined(OS_UNIX) || !OS_UNIX
