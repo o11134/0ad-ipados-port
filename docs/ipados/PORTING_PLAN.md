@@ -63,11 +63,26 @@ and absence of LFS/game data. No compilation, no engine integration.
 Acceptance: upstream HEAD matches the pinned commit, all M0-identified critical files are present,
 `binaries/data` is absent, no LFS objects are downloaded.
 
-Current result: **M3-A PENDING.** Workflow authored but not yet run.
+Current result: **M3-A PASS** (run 30055025293).
 
 Rollback: delete the M3 workflow and staging script; no engine files are committed.
 
-### M3-B — core engine bootstrap
+### M3-B — platform detection bootstrap
+
+Patch upstream `source/lib/sysdep/os.h` to define `OS_IOS` for iOS/iPadOS targets using
+`TARGET_OS_IPHONE` from `<TargetConditionals.h>`, keeping `OS_MACOSX` for macOS only.
+Extend `OS_UNIX` to include `OS_IOS`. Build and run a minimal platform probe on the iPad
+Simulator to verify the classification. No engine runtime integration.
+
+Acceptance: patched `os.h` compiles for iphoneos and iphonesimulator ARM64; simulator probe
+reports `OS_IOS=1`, `OS_MACOSX=0`, `OS_UNIX=1`, `ARCH_ARM64=1`; macOS classification is
+unchanged.
+
+Current result: **M3-B PENDING.** Workflow authored but not yet run.
+
+Rollback: delete the patch, probe, and M3 platform workflow; upstream workspace is ephemeral.
+
+### M3-C — core engine bootstrap
 
 Add `OS_IOS` without changing macOS classification; add iOS source selection and a narrow platform
 bridge. Link the smallest core closure with audio, Atlas, lobby, DAP, miniupnpc, NVTT, and Collada

@@ -14,8 +14,10 @@ historical provenance; live publication and run state belongs to the standalone 
 - **M2-Device: NOT TESTED (DEFERRED).** No physical Mac/device Xcode connection or authorized
   signed distribution route exists. Must be completed before any release or public device claim.
 - **Overall M2: INCOMPLETE.** M2-Device remains unvalidated.
-- **M3-A: PENDING.** Upstream source bootstrap workflow is authored but not yet run.
-- **M3 engine integration: NOT STARTED.** No engine, SpiderMonkey, graphics, data, audio, touch, or
+- **M3-A: PASS.** Upstream source bootstrap (run 30055025293): clone, sparse checkout, exact HEAD
+  verification, 16/16 required files, no LFS objects, 61 MB workspace.
+- **M3-B: PENDING.** Platform detection patch and probe workflow authored but not yet run.
+- **M3 engine runtime: NOT STARTED.** No engine, SpiderMonkey, graphics, data, audio, touch, or
   networking integration was added.
 
 # Repository identity

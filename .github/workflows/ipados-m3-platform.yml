@@ -1,0 +1,251 @@
+name: iPadOS M3 Platform Bootstrap
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feature/ipados-native-port
+    paths:
+      - .github/workflows/ipados-m3-platform.yml
+      - patches/upstream/**
+      - scripts/ios/apply-upstream-patches.sh
+      - scripts/ios/prepare-upstream-source.sh
+      - source/platform/probe/**
+      - build/ios/probe/**
+      - UPSTREAM_REVISION
+  pull_request:
+    paths:
+      - .github/workflows/ipados-m3-platform.yml
+      - patches/upstream/**
+      - scripts/ios/apply-upstream-patches.sh
+      - scripts/ios/prepare-upstream-source.sh
+      - source/platform/probe/**
+      - build/ios/probe/**
+      - UPSTREAM_REVISION
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ipados-m3-platform-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  platform-bootstrap:
+    name: M3 platform detection validation
+    runs-on: macos-15
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Checkout port repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          clean: false
+          fetch-depth: 1
+          lfs: false
+          persist-credentials: false
+          set-safe-directory: false
+          sparse-checkout: |
+            .github/workflows
+            build/ios
+            patches
+            scripts/ios
+            source/platform
+            UPSTREAM_REVISION
+          sparse-checkout-cone-mode: true
+          submodules: false
+
+      - name: Initialize CI paths
+        run: |
+          set -euo pipefail
+          {
+            echo "IPADOS_ARTIFACT_ROOT=$RUNNER_TEMP/ipados-m3-platform-artifacts"
+            echo "IPADOS_UPSTREAM_WORKSPACE=$RUNNER_TEMP/ipados-upstream-source"
+          } >> "$GITHUB_ENV"
+
+      - name: Create artifact directories
+        run: |
+          set -euo pipefail
+          mkdir -p "$IPADOS_ARTIFACT_ROOT"
+
+      - name: Prepare upstream source
+        run: |
+          set -euo pipefail
+          sh scripts/ios/prepare-upstream-source.sh 2>&1 | tee "$IPADOS_ARTIFACT_ROOT/upstream-prepare.txt"
+
+      - name: Apply upstream patches
+        run: |
+          set -euo pipefail
+          sh scripts/ios/apply-upstream-patches.sh "$IPADOS_UPSTREAM_WORKSPACE" 2>&1 |
+            tee "$IPADOS_ARTIFACT_ROOT/patch-application.txt"
+
+      - name: Verify patched os.h contains OS_IOS
+        run: |
+          set -euo pipefail
+          if grep -q 'OS_IOS' "$IPADOS_UPSTREAM_WORKSPACE/source/lib/sysdep/os.h"; then
+            echo "PASS: patched os.h contains OS_IOS"
+          else
+            echo "error: patched os.h does not contain OS_IOS" >&2
+            exit 1
+          fi
+          grep -n 'OS_IOS\|OS_MACOSX\|TARGET_OS_IPHONE\|TargetConditionals' \
+            "$IPADOS_UPSTREAM_WORKSPACE/source/lib/sysdep/os.h" |
+            tee "$IPADOS_ARTIFACT_ROOT/patched-os-h-lines.txt"
+
+      - name: Generate device probe project
+        run: |
+          set -euo pipefail
+          cmake -S build/ios/probe -B "$RUNNER_TEMP/probe-iphoneos" -G Xcode \
+            -DCMAKE_SYSTEM_NAME=iOS \
+            -DCMAKE_OSX_SYSROOT=iphoneos \
+            -DIPADOS_UPSTREAM_SOURCE="$IPADOS_UPSTREAM_WORKSPACE" \
+            2>&1 | tee "$IPADOS_ARTIFACT_ROOT/cmake-iphoneos.txt"
+
+      - name: Compile device probe (unsigned)
+        run: |
+          set -euo pipefail
+          xcodebuild \
+            -project "$RUNNER_TEMP/probe-iphoneos/PyrogenesisPlatformProbe.xcodeproj" \
+            -scheme PyrogenesisPlatformProbe \
+            -configuration Debug \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath "$RUNNER_TEMP/probe-iphoneos-dd" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            build 2>&1 | tee "$IPADOS_ARTIFACT_ROOT/xcodebuild-iphoneos.txt"
+          echo "PASS: device probe compiled and linked"
+
+      - name: Generate simulator probe project
+        run: |
+          set -euo pipefail
+          cmake -S build/ios/probe -B "$RUNNER_TEMP/probe-iphonesimulator" -G Xcode \
+            -DCMAKE_SYSTEM_NAME=iOS \
+            -DCMAKE_OSX_SYSROOT=iphonesimulator \
+            -DIPADOS_UPSTREAM_SOURCE="$IPADOS_UPSTREAM_WORKSPACE" \
+            2>&1 | tee "$IPADOS_ARTIFACT_ROOT/cmake-iphonesimulator.txt"
+
+      - name: Build, install, and launch simulator probe
+        run: |
+          set -euo pipefail
+
+          xcodebuild \
+            -project "$RUNNER_TEMP/probe-iphonesimulator/PyrogenesisPlatformProbe.xcodeproj" \
+            -scheme PyrogenesisPlatformProbe \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath "$RUNNER_TEMP/probe-simulator-dd" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            build 2>&1 | tee "$IPADOS_ARTIFACT_ROOT/xcodebuild-iphonesimulator.txt"
+
+          sim_build_settings="$IPADOS_ARTIFACT_ROOT/sim-build-settings.txt"
+          xcodebuild -showBuildSettings \
+            -project "$RUNNER_TEMP/probe-iphonesimulator/PyrogenesisPlatformProbe.xcodeproj" \
+            -scheme PyrogenesisPlatformProbe \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath "$RUNNER_TEMP/probe-simulator-dd" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            > "$sim_build_settings" 2>/dev/null
+          target_build_dir=$(sed -n 's/^ *TARGET_BUILD_DIR = //p' "$sim_build_settings")
+          wrapper_name=$(sed -n 's/^ *WRAPPER_NAME = //p' "$sim_build_settings")
+          app_path="$target_build_dir/$wrapper_name"
+          test -d "$app_path"
+          bundle_id=$(plutil -extract CFBundleIdentifier raw -o - "$app_path/Info.plist")
+
+          devices_json="$RUNNER_TEMP/simctl-devices.json"
+          xcrun simctl list devices available -j > "$devices_json"
+          sim_udid=$(python3 - "$devices_json" <<'PY'
+          import json, re, sys
+          with open(sys.argv[1], encoding="utf-8") as f:
+              payload = json.load(f)
+          candidates = []
+          for runtime, devices in payload.get("devices", {}).items():
+              if ".iOS-" not in runtime:
+                  continue
+              version = tuple(int(p) for p in re.search(r"\.iOS-([0-9-]+)$", runtime).group(1).split("-"))
+              for d in devices:
+                  if d.get("isAvailable") and d.get("name", "").startswith("iPad"):
+                      candidates.append((d.get("state") == "Booted", version, d["udid"]))
+          if not candidates:
+              raise SystemExit("no available iPad simulator found")
+          print(sorted(candidates, reverse=True)[0][2])
+          PY
+          )
+          echo "simulator_udid=$sim_udid"
+
+          xcrun simctl boot "$sim_udid" 2>/dev/null || true
+          xcrun simctl bootstatus "$sim_udid" -b
+
+          xcrun simctl install "$sim_udid" "$app_path"
+          launch_output=$(xcrun simctl launch "$sim_udid" "$bundle_id" 2>&1)
+          echo "$launch_output"
+          app_pid=$(printf '%s\n' "$launch_output" | sed -n 's/^.*: \([0-9][0-9]*\)$/\1/p' | sed -n '$p')
+          if [ -z "$app_pid" ]; then
+            echo "error: simctl launch did not return a PID" >&2
+            exit 1
+          fi
+          echo "app_pid=$app_pid"
+
+          sleep 5
+
+          log_output=$(xcrun simctl spawn "$sim_udid" log show \
+            --last 2m --style compact --info --debug \
+            --predicate "processID == $app_pid AND eventMessage CONTAINS \"Pyrogenesis PlatformProbe\"" 2>&1)
+          printf '%s\n' "$log_output" > "$IPADOS_ARTIFACT_ROOT/probe-log.txt"
+          cat "$IPADOS_ARTIFACT_ROOT/probe-log.txt"
+
+          if printf '%s\n' "$log_output" | grep -q 'OS_IOS=1'; then
+            echo "PASS: probe reports OS_IOS=1"
+          else
+            echo "error: probe does not report OS_IOS=1" >&2
+            exit 1
+          fi
+          if printf '%s\n' "$log_output" | grep -q 'OS_MACOSX=0'; then
+            echo "PASS: probe reports OS_MACOSX=0"
+          else
+            echo "error: probe does not report OS_MACOSX=0" >&2
+            exit 1
+          fi
+          if printf '%s\n' "$log_output" | grep -q 'OS_UNIX=1'; then
+            echo "PASS: probe reports OS_UNIX=1"
+          else
+            echo "error: probe does not report OS_UNIX=1" >&2
+            exit 1
+          fi
+          if printf '%s\n' "$log_output" | grep -q 'ARCH_ARM64=1'; then
+            echo "PASS: probe reports ARCH_ARM64=1"
+          else
+            echo "error: probe does not report ARCH_ARM64=1" >&2
+            exit 1
+          fi
+
+          xcrun simctl terminate "$sim_udid" "$bundle_id" 2>/dev/null || true
+          xcrun simctl shutdown "$sim_udid" 2>/dev/null || true
+
+      - name: Write summary
+        if: ${{ always() }}
+        run: |
+          set -euo pipefail
+          {
+            printf 'M3-B Platform Bootstrap\n'
+            printf 'upstream_commit=eae57d9aab66511a22a869192b7ec72feeaedc7a\n'
+            printf 'See artifacts for detailed logs.\n'
+          } | tee "$IPADOS_ARTIFACT_ROOT/summary.txt"
+          cat "$IPADOS_ARTIFACT_ROOT/summary.txt" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload M3 platform artifacts
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ipados-m3-platform-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/ipados-m3-platform-artifacts
+          if-no-files-found: warn
+          retention-days: 14
