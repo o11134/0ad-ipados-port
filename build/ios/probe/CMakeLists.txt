@@ -24,8 +24,10 @@ if(IPADOS_UPSTREAM_SOURCE STREQUAL "" OR NOT EXISTS "${IPADOS_UPSTREAM_SOURCE}/s
 	message(FATAL_ERROR "IPADOS_UPSTREAM_SOURCE must point to a prepared upstream workspace containing source/lib/sysdep/os.h")
 endif()
 
+get_filename_component(PORT_REPOSITORY_ROOT "${CMAKE_CURRENT_LIST_DIR}/../../.." ABSOLUTE)
+
 add_executable(PyrogenesisPlatformProbe MACOSX_BUNDLE
-	"${CMAKE_CURRENT_LIST_DIR}/../../source/platform/probe/PlatformProbe.mm")
+	"${PORT_REPOSITORY_ROOT}/source/platform/probe/PlatformProbe.mm")
 
 target_include_directories(PyrogenesisPlatformProbe PRIVATE
 	"${IPADOS_UPSTREAM_SOURCE}/source")
