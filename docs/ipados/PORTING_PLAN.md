@@ -78,11 +78,11 @@ Acceptance: patched `os.h` compiles for iphoneos and iphonesimulator ARM64; simu
 reports `OS_IOS=1`, `OS_MACOSX=0`, `OS_UNIX=1`, `ARCH_ARM64=1`; macOS classification is
 unchanged.
 
-Current result: **M3-B FAIL / FIX IN PROGRESS.** The deterministic unified diff patch and its workflow checks are being introduced against the pinned upstream revision.
+Current result: **M3-B PASS** (run `30129970396`: deterministic unified patch applied cleanly, double-apply rejected, macOS classification `OS_MACOSX=1`, `OS_IOS=0`, `OS_UNIX=1`, `iphoneos` arm64 compiled/linked, iPad Simulator probe launched with `OS_IOS=1`, `OS_MACOSX=0`, `OS_UNIX=1`, `ARCH_ARM64=1`).
 
 Rollback: delete the unified patch, probe, workflow validation step, and M3 platform workflow; upstream workspace is ephemeral.
 
-### M3-C — core engine bootstrap
+### M3-C — core engine bootstrap (NOT STARTED)
 
 Add `OS_IOS` without changing macOS classification; add iOS source selection and a narrow platform
 bridge. Link the smallest core closure with audio, Atlas, lobby, DAP, miniupnpc, NVTT, and Collada

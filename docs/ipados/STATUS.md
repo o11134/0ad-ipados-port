@@ -16,8 +16,8 @@ historical provenance; live publication and run state belongs to the standalone 
 - **Overall M2: INCOMPLETE.** M2-Device remains unvalidated.
 - **M3-A: PASS.** Upstream source bootstrap (run 30055025293): clone, sparse checkout, exact HEAD
   verification, 16/16 required files, no LFS objects, 61 MB workspace.
-- **M3-B: FAIL / FIX IN PROGRESS.** The Python-based patcher failed on the real upstream `os.h` and is being replaced by a deterministic unified diff.
-- **M3 engine runtime: NOT STARTED.** No engine, SpiderMonkey, graphics, data, audio, touch, or
+- **M3-B: PASS.** GitHub Actions run `30129970396`: upstream source prepared (`eae57d9aab`), deterministic unified patch applied cleanly (`patches/upstream/0001-sysdep-detect-ios-platform.patch`), double-apply rejected, macOS classification validated (`OS_MACOSX=1`, `OS_IOS=0`, `OS_UNIX=1`), unsigned `iphoneos` arm64 compiled and linked, and iPad Simulator probe built, installed, launched, and reported `OS_IOS=1`, `OS_MACOSX=0`, `OS_UNIX=1`, `ARCH_ARM64=1`. Physical iPad verification remains NOT TESTED (no physical device connection).
+- **M3 engine runtime / M3-C: NOT STARTED.** No engine, SpiderMonkey, graphics, data, audio, touch, or
   networking integration was added.
 
 # Repository identity

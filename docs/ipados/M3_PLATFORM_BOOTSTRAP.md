@@ -67,23 +67,32 @@ The simulator runs on a Mac host but compiles for the iOS target; host != target
 `os.h` and `arch.h` headers and prints all platform macros to stdout and the unified log.
 It is built by `build/ios/probe/CMakeLists.txt` against the patched upstream workspace.
 
-## What M3-B currently shows
+## What M3-B shows
 
-- The pinned upstream revision's `os.h` does not match the old Python regex-based patcher.
-- The real upstream context captured in run `30057265615` shows:
-  - `64:#if (defined(__APPLE__) && defined(__MACH__))`
-  - `65:# define OS_MACOSX 1`
-  - `67:# define OS_MACOSX 0`
-  - `110:#if OS_LINUX || OS_MACOSX || OS_BSD || OS_SOLARIS`
-  - `111:# undef OS_UNIX`
-  - `112:# define OS_UNIX 1`
-- The earlier Python patcher failed with `error: could not locate the __APPLE__ / OS_MACOSX block`.
-- No iPhoneOS compile, simulator compile, or simulator launch evidence exists yet for the unified patch.
+### Troubleshooting history
+- The initial Python-based patcher (`0001-sysdep-detect-ios-platform.py`) failed because it searched for a synthetic fixture layout.
+- The real upstream `os.h` at pinned commit `eae57d9aab66511a22a869192b7ec72feeaedc7a` contains a 63-line preamble (MIT copyright header, include guard, Windows/Linux/Android platform blocks) before line 64: `#if (defined(__APPLE__) && defined(__MACH__))`.
+- The initial unified patch hunk `@@ -1,11 +1,16 @@` failed because `git apply` checked line 1 context.
+- In run `30128482594`, diagnostic context capture extracted the exact real upstream `os.h` file structure.
+- In run `30129740773`, the unified patch was regenerated against real upstream `os.h`, but the probe CMakeLists had an extra `build/` directory level resolution.
+
+### Verified execution evidence (GitHub Actions Run `30129970396`)
+- **Upstream preparation**: Cloned and checked out pinned commit `eae57d9aab66511a22a869192b7ec72feeaedc7a`.
+- **Patch application**: `git apply --check` and `git apply` passed cleanly for `patches/upstream/0001-sysdep-detect-ios-platform.patch`.
+- **Idempotency**: Double application check rejected second `git apply --check` as expected.
+- **macOS classification**: Host test validated `OS_MACOSX=1`, `OS_IOS=0`, `OS_UNIX=1`.
+- **`iphoneos` device probe**: CMake generated Xcode project; `xcodebuild` compiled and linked unsigned `arm64` binary cleanly.
+- **iPad Simulator probe**: CMake generated Xcode project; `xcodebuild` built `arm64` bundle; `simctl install` and `simctl launch` succeeded on iPad Simulator (`E1283D47-9830-4DDE-B6D3-C216A12ACAC2`).
+- **Runtime macro values**: Simulator unified log verified:
+  - `OS_IOS=1`
+  - `OS_MACOSX=0`
+  - `OS_UNIX=1`
+  - `ARCH_ARM64=1`
 
 ## What M3-B did not prove
 
-- Engine runtime initialization.
+- Physical iPad device execution (remains `NOT TESTED / DEFERRED`).
+- Core engine runtime initialization (M3-C).
 - SpiderMonkey, SDL, MoltenVK, or renderer integration.
-- Physical device behavior.
 - Full engine compilation.
 - M2-Device validation.
