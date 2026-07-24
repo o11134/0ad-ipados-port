@@ -76,6 +76,16 @@ jobs:
           set -euo pipefail
           sh scripts/ios/prepare-upstream-source.sh 2>&1 | tee "$IPADOS_ARTIFACT_ROOT/upstream-prepare.txt"
 
+      - name: Capture upstream os.h context
+        run: |
+          set -euo pipefail
+          git -C "$IPADOS_UPSTREAM_WORKSPACE" rev-parse HEAD | tee "$IPADOS_ARTIFACT_ROOT/upstream-head.txt"
+          {
+            printf 'context around __APPLE__ / OS_MACOSX / OS_UNIX\n'
+            grep -n -E '__APPLE__|OS_MACOSX|OS_UNIX|TargetConditionals' \
+              "$IPADOS_UPSTREAM_WORKSPACE/source/lib/sysdep/os.h" || true
+          } | tee "$IPADOS_ARTIFACT_ROOT/upstream-os-context.txt"
+
       - name: Apply upstream patches
         run: |
           set -euo pipefail
