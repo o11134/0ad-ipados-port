@@ -1,0 +1,12 @@
+diff --git a/source/lib/timer.cpp b/source/lib/timer.cpp
+index b0f928619..e7514dc5c 100644
+--- a/source/lib/timer.cpp
++++ b/source/lib/timer.cpp
+@@ -43,6 +43,7 @@
+ #include "lib/sysdep/os/win/win.h"
+ #endif
+ #if OS_UNIX
++# include <sys/time.h>
+ # include <unistd.h>
+ # include <time.h>
+ #endif

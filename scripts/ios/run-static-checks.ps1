@@ -462,11 +462,12 @@ else
 	Write-Pass 'scripts/ios contain no download, remote script, or Git LFS command'
 }
 
-$patchFile = Join-Path $RepositoryRoot 'patches\upstream\0001-sysdep-detect-ios-platform.patch'
-$pythonPatcher = Join-Path $RepositoryRoot 'patches\upstream\0001-sysdep-detect-ios-platform.py'
+$patchFile1 = Join-Path $RepositoryRoot 'patches\upstream\0001-sysdep-detect-ios-platform.patch'
+$patchFile2 = Join-Path $RepositoryRoot 'patches\upstream\0002-timer-include-sys-time.patch'
 $applyScript = Join-Path $RepositoryRoot 'scripts\ios\apply-upstream-patches.sh'
-if ((Test-Path -LiteralPath $patchFile) -and
-	-not (Test-Path -LiteralPath $pythonPatcher) -and
+if ((Test-Path -LiteralPath $patchFile1) -and
+	(Test-Path -LiteralPath $patchFile2) -and
+	(@(Select-String -LiteralPath $patchFile2 -SimpleMatch 'sys/time.h').Count -gt 0) -and
 	(@(Select-String -LiteralPath $applyScript -SimpleMatch 'apply --check').Count -gt 0) -and
 	(@(Select-String -LiteralPath $applyScript -SimpleMatch '/*.patch').Count -gt 0) -and
 	(@(Select-String -LiteralPath $applyScript -SimpleMatch '--3way').Count -eq 0) -and
