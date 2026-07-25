@@ -39,8 +39,11 @@ add_library(PyrogenesisCoreIOS STATIC
 	"${IPADOS_UPSTREAM_SOURCE}/source/lib/sysdep/os/unix/unix.cpp"
 	"${IPADOS_UPSTREAM_SOURCE}/source/lib/sysdep/os/unix/udbg.cpp")
 
-target_include_directories(PyrogenesisCoreIOS PUBLIC
-	"${IPADOS_UPSTREAM_SOURCE}/source")
+target_include_directories(PyrogenesisCoreIOS
+	PUBLIC
+		"${IPADOS_UPSTREAM_SOURCE}/source"
+	PRIVATE
+		"${IPADOS_UPSTREAM_SOURCE}/source/lib")
 
 target_compile_features(PyrogenesisCoreIOS PRIVATE cxx_std_17)
 target_compile_options(PyrogenesisCoreIOS PRIVATE -Wall -Wextra)
