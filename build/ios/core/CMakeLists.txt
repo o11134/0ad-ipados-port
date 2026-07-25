@@ -36,6 +36,7 @@ target_include_directories(PyrogenesisCoreIOS PUBLIC
 
 target_compile_features(PyrogenesisCoreIOS PRIVATE cxx_std_17)
 target_compile_options(PyrogenesisCoreIOS PRIVATE -Wall -Wextra)
+target_compile_definitions(PyrogenesisCoreIOS PRIVATE CONFIG_ENABLE_PCH=0)
 
 set_target_properties(PyrogenesisCoreIOS PROPERTIES
 	CXX_EXTENSIONS NO
