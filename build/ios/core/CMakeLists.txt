@@ -29,7 +29,16 @@ get_filename_component(PORT_REPOSITORY_ROOT "${CMAKE_CURRENT_LIST_DIR}/../../.."
 # Static library containing real upstream Pyrogenesis timer/module_init core sources
 add_library(PyrogenesisCoreIOS STATIC
 	"${IPADOS_UPSTREAM_SOURCE}/source/lib/timer.cpp"
-	"${IPADOS_UPSTREAM_SOURCE}/source/lib/module_init.cpp")
+	"${IPADOS_UPSTREAM_SOURCE}/source/lib/module_init.cpp"
+	"${IPADOS_UPSTREAM_SOURCE}/source/lib/debug.cpp"
+	"${IPADOS_UPSTREAM_SOURCE}/source/lib/status.cpp"
+	"${IPADOS_UPSTREAM_SOURCE}/source/lib/utf8.cpp"
+	"${IPADOS_UPSTREAM_SOURCE}/source/lib/path.cpp"
+	"${IPADOS_UPSTREAM_SOURCE}/source/lib/os_path.cpp"
+	"${IPADOS_UPSTREAM_SOURCE}/source/lib/app_hooks.cpp"
+	"${IPADOS_UPSTREAM_SOURCE}/source/lib/secure_crt.cpp"
+	"${IPADOS_UPSTREAM_SOURCE}/source/lib/sysdep/os/unix/unix.cpp"
+	"${IPADOS_UPSTREAM_SOURCE}/source/lib/sysdep/os/unix/udbg.cpp")
 
 target_include_directories(PyrogenesisCoreIOS PUBLIC
 	"${IPADOS_UPSTREAM_SOURCE}/source")
