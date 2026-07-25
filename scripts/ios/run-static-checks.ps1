@@ -480,6 +480,23 @@ else
 	Write-Fail 'deterministic unified patching checks failed'
 }
 
+$coreCmakeFile = Join-Path $RepositoryRoot 'build\ios\core\CMakeLists.txt'
+$coreProbeFile = Join-Path $RepositoryRoot 'source\platform\probe\CoreProbe.mm'
+$coreWorkflowFile = Join-Path $RepositoryRoot '.github\workflows\ipados-m3-core.yml'
+if ((Test-Path -LiteralPath $coreCmakeFile) -and
+	(Test-Path -LiteralPath $coreProbeFile) -and
+	(Test-Path -LiteralPath $coreWorkflowFile) -and
+	(@(Select-String -LiteralPath $coreCmakeFile -SimpleMatch 'timer.cpp').Count -gt 0) -and
+	(@(Select-String -LiteralPath $coreCmakeFile -SimpleMatch 'module_init.cpp').Count -gt 0) -and
+	(@(Select-String -LiteralPath $coreCmakeFile -SimpleMatch 'GameSetup.cpp').Count -eq 0))
+{
+	Write-Pass 'M3-C1 core probe CMake, probe source, and workflow configuration are valid'
+}
+else
+{
+	Write-Fail 'M3-C1 core probe static checks failed'
+}
+
 $cmakeText = Get-Content -LiteralPath (Join-Path $RepositoryRoot 'build\ios\CMakeLists.txt') -Raw
 if ($cmakeText.Contains('set(IPADOS_BUNDLE_IDENTIFIER "org.example.pyrogenesis.ipadshell"') -and
 	$cmakeText.Contains('set(IPADOS_PRODUCT_NAME "Pyrogenesis iPad Shell"'))

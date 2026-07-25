@@ -1,0 +1,212 @@
+name: iPadOS M3 Core Bootstrap
+
+on:
+  push:
+    branches:
+      - feature/ipados-native-port
+  pull_request:
+    branches:
+      - feature/ipados-native-port
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  m3-core-bootstrap:
+    name: M3 core timer bootstrap validation
+    runs-on: macos-15
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout port repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+
+      - name: Initialize CI paths
+        run: |
+          set -euo pipefail
+          IPADOS_ARTIFACT_ROOT="${RUNNER_TEMP:-/tmp}/ipados-m3-core-artifacts"
+          IPADOS_UPSTREAM_WORKSPACE="${RUNNER_TEMP:-/tmp}/ipados-upstream-source"
+          mkdir -p "$IPADOS_ARTIFACT_ROOT"
+          echo "IPADOS_ARTIFACT_ROOT=$IPADOS_ARTIFACT_ROOT" >> "$GITHUB_ENV"
+          echo "IPADOS_UPSTREAM_WORKSPACE=$IPADOS_UPSTREAM_WORKSPACE" >> "$GITHUB_ENV"
+
+      - name: Prepare pinned upstream source
+        run: |
+          set -euo pipefail
+          sh scripts/ios/prepare-upstream-source.sh 2>&1 | tee "$IPADOS_ARTIFACT_ROOT/upstream-prepare.txt"
+
+      - name: Verify exact upstream HEAD
+        run: |
+          set -euo pipefail
+          upstream_head=$(git -C "$IPADOS_UPSTREAM_WORKSPACE" rev-parse HEAD)
+          printf 'upstream_head=%s\n' "$upstream_head"
+          if [ "$upstream_head" != "eae57d9aab66511a22a869192b7ec72feeaedc7a" ]; then
+            echo "error: upstream HEAD mismatch" >&2
+            exit 1
+          fi
+          echo "PASS: upstream HEAD matches pinned commit eae57d9aab66511a22a869192b7ec72feeaedc7a"
+
+      - name: Apply upstream platform patches
+        run: |
+          set -euo pipefail
+          sh scripts/ios/apply-upstream-patches.sh "$IPADOS_UPSTREAM_WORKSPACE" 2>&1 |
+            tee "$IPADOS_ARTIFACT_ROOT/patch-application.txt"
+
+      - name: Configure iphoneos core probe
+        run: |
+          set -euo pipefail
+          cmake -S build/ios/core -B "$RUNNER_TEMP/core-iphoneos" -G Xcode \
+            -DCMAKE_SYSTEM_NAME=iOS \
+            -DCMAKE_OSX_SYSROOT=iphoneos \
+            -DIPADOS_UPSTREAM_SOURCE="$IPADOS_UPSTREAM_WORKSPACE" \
+            2>&1 | tee "$IPADOS_ARTIFACT_ROOT/cmake-iphoneos-core.txt"
+          echo "PASS: CMake generated iphoneos core probe project"
+
+      - name: Build iphoneos arm64 unsigned
+        run: |
+          set -euo pipefail
+          xcodebuild -project "$RUNNER_TEMP/core-iphoneos/PyrogenesisCoreProbe.xcodeproj" \
+            -scheme PyrogenesisCoreProbe \
+            -configuration Debug \
+            -sdk iphoneos \
+            -arch arm64 \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            2>&1 | tee "$IPADOS_ARTIFACT_ROOT/xcodebuild-iphoneos-core.txt"
+          echo "PASS: device core probe compiled and linked"
+
+      - name: Inspect iphoneos linkage
+        run: |
+          set -euo pipefail
+          device_bin="$RUNNER_TEMP/core-iphoneos/Debug-iphoneos/PyrogenesisCoreProbe.app/PyrogenesisCoreProbe"
+          otool -L "$device_bin" | tee "$IPADOS_ARTIFACT_ROOT/iphoneos-linkage-otool.txt"
+          nm -u "$device_bin" | tee "$IPADOS_ARTIFACT_ROOT/iphoneos-linkage-nm.txt"
+
+          if otool -L "$device_bin" | grep -i -E 'SDL|mozjs|spidermonkey|MoltenVK|Vulkan|OpenAL|enet'; then
+            echo "error: unintended third-party library leakage detected in iphoneos binary" >&2
+            exit 1
+          fi
+          echo "PASS: iphoneos linkage clean of unintended third-party frameworks"
+
+      - name: Configure iphonesimulator core probe
+        run: |
+          set -euo pipefail
+          cmake -S build/ios/core -B "$RUNNER_TEMP/core-iphonesimulator" -G Xcode \
+            -DCMAKE_SYSTEM_NAME=iOS \
+            -DCMAKE_OSX_SYSROOT=iphonesimulator \
+            -DIPADOS_UPSTREAM_SOURCE="$IPADOS_UPSTREAM_WORKSPACE" \
+            2>&1 | tee "$IPADOS_ARTIFACT_ROOT/cmake-iphonesimulator-core.txt"
+          echo "PASS: CMake generated iphonesimulator core probe project"
+
+      - name: Build iphonesimulator arm64
+        run: |
+          set -euo pipefail
+          xcodebuild -project "$RUNNER_TEMP/core-iphonesimulator/PyrogenesisCoreProbe.xcodeproj" \
+            -scheme PyrogenesisCoreProbe \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -arch arm64 \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            2>&1 | tee "$IPADOS_ARTIFACT_ROOT/xcodebuild-iphonesimulator-core.txt"
+          echo "PASS: simulator core probe built"
+
+      - name: Inspect simulator linkage
+        run: |
+          set -euo pipefail
+          sim_bin="$RUNNER_TEMP/core-iphonesimulator/Debug-iphonesimulator/PyrogenesisCoreProbe.app/PyrogenesisCoreProbe"
+          otool -L "$sim_bin" | tee "$IPADOS_ARTIFACT_ROOT/simulator-linkage-otool.txt"
+          nm -u "$sim_bin" | tee "$IPADOS_ARTIFACT_ROOT/simulator-linkage-nm.txt"
+
+          if otool -L "$sim_bin" | grep -i -E 'SDL|mozjs|spidermonkey|MoltenVK|Vulkan|OpenAL|enet'; then
+            echo "error: unintended third-party library leakage detected in simulator binary" >&2
+            exit 1
+          fi
+          if nm -u "$sim_bin" | grep -E '^_[[:space:]]*(SDL_|JS_|JS::|vk|alc|alut|enet_)'; then
+            echo "error: prohibited third-party symbol reference detected" >&2
+            exit 1
+          fi
+          echo "PASS: simulator linkage clean of unintended third-party symbols and frameworks"
+
+      - name: Build, install, and launch simulator core probe
+        run: |
+          set -euo pipefail
+          app_bundle="$RUNNER_TEMP/core-iphonesimulator/Debug-iphonesimulator/PyrogenesisCoreProbe.app"
+
+          sim_udid=$(xcrun simctl list devices available |
+            grep -F 'iPad' |
+            grep -o -E '[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}' |
+            head -n 1)
+
+          if [ -z "$sim_udid" ]; then
+            echo "error: no available iPad Simulator found" >&2
+            exit 1
+          fi
+          echo "simulator_udid=$sim_udid"
+
+          xcrun simctl boot "$sim_udid" || true
+          xcrun simctl install "$sim_udid" "$app_bundle"
+
+          launch_output=$(xcrun simctl launch "$sim_udid" "org.example.pyrogenesis.core-probe" 2>&1 |
+            tee "$IPADOS_ARTIFACT_ROOT/simulator-launch.txt")
+
+          app_pid=$(printf '%s\n' "$launch_output" | sed -n 's/^.*: \([0-9][0-9]*\)$/\1/p' | sed -n '$p')
+
+          if [ -z "$app_pid" ]; then
+            echo "error: failed to extract app PID from launch output" >&2
+            exit 1
+          fi
+          echo "app_pid=$app_pid"
+
+          sleep 3
+
+          log_output=$(xcrun simctl spawn "$sim_udid" log show \
+            --predicate "processID == $app_pid AND eventMessage CONTAINS \"Pyrogenesis CoreProbe\"" 2>&1)
+          printf '%s\n' "$log_output" | tee "$IPADOS_ARTIFACT_ROOT/simulator-unified-log.txt"
+
+          if printf '%s\n' "$log_output" | grep -q 'M3_CORE_BOOTSTRAP_STARTED'; then
+            echo "PASS: probe started execution"
+          else
+            echo "error: probe did not report M3_CORE_BOOTSTRAP_STARTED" >&2
+            exit 1
+          fi
+
+          if printf '%s\n' "$log_output" | grep -q 'M3_TIMER_INIT_PASS'; then
+            echo "PASS: probe reports M3_TIMER_INIT_PASS"
+          else
+            echo "error: probe did not report M3_TIMER_INIT_PASS" >&2
+            exit 1
+          fi
+
+          if printf '%s\n' "$log_output" | grep -q 'M3_CORE_BOOTSTRAP_PASS'; then
+            echo "PASS: probe reports M3_CORE_BOOTSTRAP_PASS"
+          else
+            echo "error: probe did not report M3_CORE_BOOTSTRAP_PASS" >&2
+            exit 1
+          fi
+
+          xcrun simctl terminate "$sim_udid" "org.example.pyrogenesis.core-probe" || true
+          echo "PASS: probe terminated cleanly"
+
+      - name: Write summary
+        run: |
+          set -euo pipefail
+          {
+            printf 'M3-C1 Core Timer Bootstrap\n'
+            printf 'upstream_commit=eae57d9aab66511a22a869192b7ec72feeaedc7a\n'
+            printf 'status=PASS\n'
+          } | tee "$IPADOS_ARTIFACT_ROOT/summary.txt"
+          cat "$IPADOS_ARTIFACT_ROOT/summary.txt" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload M3 core artifacts
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: ${{ always() }}
+        with:
+          name: ipados-m3-core-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ env.IPADOS_ARTIFACT_ROOT }}
+          retention-days: 14

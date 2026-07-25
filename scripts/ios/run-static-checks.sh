@@ -251,6 +251,17 @@ else
 	fail "deterministic unified patching checks failed"
 fi
 
+if [ -f "$REPOSITORY_ROOT/build/ios/core/CMakeLists.txt" ] &&
+	[ -f "$REPOSITORY_ROOT/source/platform/probe/CoreProbe.mm" ] &&
+	[ -f "$REPOSITORY_ROOT/.github/workflows/ipados-m3-core.yml" ] &&
+	grep -F 'timer.cpp' "$REPOSITORY_ROOT/build/ios/core/CMakeLists.txt" >/dev/null &&
+	grep -F 'module_init.cpp' "$REPOSITORY_ROOT/build/ios/core/CMakeLists.txt" >/dev/null &&
+	! grep -F 'GameSetup.cpp' "$REPOSITORY_ROOT/build/ios/core/CMakeLists.txt" >/dev/null; then
+	pass "M3-C1 core probe CMake, probe source, and workflow configuration are valid"
+else
+	fail "M3-C1 core probe static checks failed"
+fi
+
 if grep -F 'set(IPADOS_BUNDLE_IDENTIFIER "org.example.pyrogenesis.ipadshell"' \
 	"$REPOSITORY_ROOT/build/ios/CMakeLists.txt" >/dev/null &&
 	grep -F 'set(IPADOS_PRODUCT_NAME "Pyrogenesis iPad Shell"' \
