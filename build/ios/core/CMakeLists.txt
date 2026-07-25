@@ -34,7 +34,6 @@ add_library(PyrogenesisCoreIOS STATIC
 	"${IPADOS_UPSTREAM_SOURCE}/source/lib/status.cpp"
 	"${IPADOS_UPSTREAM_SOURCE}/source/lib/utf8.cpp"
 	"${IPADOS_UPSTREAM_SOURCE}/source/lib/path.cpp"
-	"${IPADOS_UPSTREAM_SOURCE}/source/lib/os_path.cpp"
 	"${IPADOS_UPSTREAM_SOURCE}/source/lib/app_hooks.cpp"
 	"${IPADOS_UPSTREAM_SOURCE}/source/lib/secure_crt.cpp"
 	"${IPADOS_UPSTREAM_SOURCE}/source/lib/sysdep/os/unix/unix.cpp"
