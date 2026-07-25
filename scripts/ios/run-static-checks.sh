@@ -241,7 +241,9 @@ fi
 
 if [ -f "$REPOSITORY_ROOT/patches/upstream/0001-sysdep-detect-ios-platform.patch" ] &&
 	[ -f "$REPOSITORY_ROOT/patches/upstream/0002-timer-include-sys-time.patch" ] &&
+	[ -f "$REPOSITORY_ROOT/patches/upstream/0003-unix-ios-portability.patch" ] &&
 	grep -F 'sys/time.h' "$REPOSITORY_ROOT/patches/upstream/0002-timer-include-sys-time.patch" >/dev/null &&
+	grep -F 'OS_IOS' "$REPOSITORY_ROOT/patches/upstream/0003-unix-ios-portability.patch" >/dev/null &&
 	grep -F 'apply --check' "$REPOSITORY_ROOT/scripts/ios/apply-upstream-patches.sh" > /dev/null &&
 	grep -F '/*.patch' "$REPOSITORY_ROOT/scripts/ios/apply-upstream-patches.sh" >/dev/null &&
 	! grep -F -- '--3way' "$REPOSITORY_ROOT/scripts/ios/apply-upstream-patches.sh" >/dev/null &&

@@ -1,0 +1,52 @@
+diff --git a/source/lib/sysdep/os/unix/unix.cpp b/source/lib/sysdep/os/unix/unix.cpp
+index 347aa666d..468ea4016 100644
+--- a/source/lib/sysdep/os/unix/unix.cpp
++++ b/source/lib/sysdep/os/unix/unix.cpp
+@@ -34,7 +34,9 @@
+ #include "lib/types.h"
+ #include "lib/utf8.h"
+ 
+-#include <boost/algorithm/string/replace.hpp>
++#if !OS_MACOSX && !OS_ANDROID && !OS_IOS
++# include <boost/algorithm/string/replace.hpp>
++#endif
+ #include <cstdio>
+ #include <cstdlib>
+ #include <cstring>
+@@ -69,7 +71,7 @@ void sys_display_msg(const wchar_t* caption, const wchar_t* msg)
+ 	fprintf(stderr, "%ls: %ls\n", caption, msg); // must not use fwprintf, since stderr is byte-oriented
+ }
+ 
+-#if OS_MACOSX || OS_ANDROID
++#if OS_MACOSX || OS_ANDROID || OS_IOS
+ static ErrorReactionInternal try_gui_display_error(const wchar_t* /*text*/, bool /*manual_break*/,
+ 	bool /*allow_suppress*/, bool /*no_continue*/)
+ {
+@@ -224,7 +226,7 @@ ErrorReactionInternal sys_display_error(const wchar_t* text, size_t flags)
+ 	if (ret != ERI_NOT_IMPLEMENTED)
+ 		return ret;
+ 
+-#if OS_ANDROID
++#if OS_ANDROID || OS_IOS
+ 	// Android has no easy way to get user input here,
+ 	// so continue or exit automatically
+ 	if(no_continue)
+@@ -353,6 +355,10 @@ Status sys_get_proxy_config(const std::wstring& /*url*/, std::wstring& /*proxy*/
+ 
+ Status sys_open_url(const std::string& url)
+ {
++#if OS_IOS
++	(void)url;
++	return ERR::NOT_SUPPORTED;
++#else
+ 	pid_t pid = fork();
+ 	if (pid < 0)
+ 	{
+@@ -379,6 +385,7 @@ Status sys_open_url(const std::string& url)
+ 
+ 		return INFO::OK;
+ 	}
++#endif
+ }
+ 
+ FILE* sys_OpenFile(const OsPath& pathname, const char* mode)
