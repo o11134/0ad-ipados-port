@@ -88,3 +88,38 @@ set_target_properties(PyrogenesisCoreProbe PROPERTIES
 	XCODE_ATTRIBUTE_PRODUCT_BUNDLE_IDENTIFIER "org.example.pyrogenesis.core-probe"
 	XCODE_ATTRIBUTE_TARGETED_DEVICE_FAMILY "2"
 	MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_LIST_DIR}/CoreProbeInfo.plist.in")
+
+# Independent M3-C2 probe. EXCLUDE_FROM_ALL keeps the M3-C1 scheme and default
+# build graph unchanged; the dedicated workflow requests this scheme explicitly.
+add_executable(PyrogenesisThreadProbe MACOSX_BUNDLE EXCLUDE_FROM_ALL
+	"${PORT_REPOSITORY_ROOT}/source/platform/probe/ThreadProbe.mm"
+	"${IPADOS_UPSTREAM_SOURCE}/source/ps/Threading.cpp")
+
+target_include_directories(PyrogenesisThreadProbe PRIVATE
+	"${IPADOS_UPSTREAM_SOURCE}/source"
+	"${IPADOS_UPSTREAM_SOURCE}/source/lib")
+
+target_compile_features(PyrogenesisThreadProbe PRIVATE cxx_std_17)
+target_compile_options(PyrogenesisThreadProbe PRIVATE -Wall -Wextra)
+target_compile_definitions(PyrogenesisThreadProbe PRIVATE CONFIG_ENABLE_PCH=0)
+
+target_link_libraries(PyrogenesisThreadProbe PRIVATE
+	PyrogenesisCoreIOS
+	"-framework Foundation"
+	"-framework UIKit")
+
+set_target_properties(PyrogenesisThreadProbe PROPERTIES
+	CXX_EXTENSIONS NO
+	CXX_STANDARD 17
+	CXX_STANDARD_REQUIRED YES
+	OBJCXX_EXTENSIONS NO
+	OBJCXX_STANDARD 17
+	OBJCXX_STANDARD_REQUIRED YES
+	OUTPUT_NAME "PyrogenesisThreadProbe"
+	XCODE_ATTRIBUTE_CLANG_ENABLE_MODULES "YES"
+	XCODE_ATTRIBUTE_CLANG_ENABLE_OBJC_ARC "YES"
+	XCODE_ATTRIBUTE_CODE_SIGN_STYLE "Automatic"
+	XCODE_ATTRIBUTE_IPHONEOS_DEPLOYMENT_TARGET "${IPADOS_DEPLOYMENT_TARGET}"
+	XCODE_ATTRIBUTE_PRODUCT_BUNDLE_IDENTIFIER "org.example.pyrogenesis.thread-probe"
+	XCODE_ATTRIBUTE_TARGETED_DEVICE_FAMILY "2"
+	MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_LIST_DIR}/CoreProbeInfo.plist.in")

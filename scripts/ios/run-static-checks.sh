@@ -263,7 +263,14 @@ else
 	fail "deterministic unified patching checks failed"
 fi
 
-if [ -f "$REPOSITORY_ROOT/build/ios/core/CMakeLists.txt" ] &&
+CORE_CMAKE="$REPOSITORY_ROOT/build/ios/core/CMakeLists.txt"
+CORE_PROBE="$REPOSITORY_ROOT/source/platform/probe/CoreProbe.mm"
+CORE_WORKFLOW="$REPOSITORY_ROOT/.github/workflows/ipados-m3-core.yml"
+CORE_LIBRARY_BLOCK=$(sed -n '/add_library(PyrogenesisCoreIOS STATIC/,/source\/lib\/sysdep\/os\/ios\/ios.cpp")/p' "$CORE_CMAKE" 2>/dev/null || true)
+CORE_PROBE_LINK_BLOCK=$(sed -n '/target_link_libraries(PyrogenesisCoreProbe PRIVATE/,/"-framework UIKit")/p' "$CORE_CMAKE" 2>/dev/null || true)
+CORE_PROBE_LINK_ENTRIES=$(printf '%s\n' "$CORE_PROBE_LINK_BLOCK" | sed '1d; s/)[[:space:]]*$//; /^[[:space:]]*$/d')
+
+if [ -f "$CORE_CMAKE" ] &&
 	[ -f "$REPOSITORY_ROOT/source/platform/probe/CoreProbe.mm" ] &&
 	[ -f "$REPOSITORY_ROOT/.github/workflows/ipados-m3-core.yml" ] &&
 	grep -F 'timer.cpp' "$REPOSITORY_ROOT/build/ios/core/CMakeLists.txt" >/dev/null &&
@@ -276,18 +283,168 @@ if [ -f "$REPOSITORY_ROOT/build/ios/core/CMakeLists.txt" ] &&
 	! grep -F 'source/lib/sysdep/os/osx/osx_bundle.mm' "$REPOSITORY_ROOT/build/ios/core/CMakeLists.txt" >/dev/null &&
 	! grep -F 'source/lib/sysdep/os/linux/ldbg.cpp' "$REPOSITORY_ROOT/build/ios/core/CMakeLists.txt" >/dev/null &&
 	! grep -F 'source/lib/sysdep/os/bsd/bdbg.cpp' "$REPOSITORY_ROOT/build/ios/core/CMakeLists.txt" >/dev/null &&
-	[ "$(grep -F -c 'CONFIG_ENABLE_PCH=0' "$REPOSITORY_ROOT/build/ios/core/CMakeLists.txt")" -eq 1 ] &&
+	[ "$(grep -F -c 'target_compile_definitions(PyrogenesisCoreIOS PRIVATE CONFIG_ENABLE_PCH=0)' "$CORE_CMAKE")" -eq 1 ] &&
 	! grep -F 'target_link_libraries(PyrogenesisCoreIOS' "$REPOSITORY_ROOT/build/ios/core/CMakeLists.txt" >/dev/null &&
 	! grep -i -E 'fmt|boost|sdl|mozjs|spidermonkey|moltenvk|vulkan|openal|enet|vfs|renderer|network' "$REPOSITORY_ROOT/build/ios/core/CMakeLists.txt" >/dev/null &&
-	[ "$(grep -F -c '"-framework ' "$REPOSITORY_ROOT/build/ios/core/CMakeLists.txt")" -eq 2 ] &&
-	[ "$(grep -F -c '"-framework Foundation"' "$REPOSITORY_ROOT/build/ios/core/CMakeLists.txt")" -eq 1 ] &&
-	[ "$(grep -F -c '"-framework UIKit"' "$REPOSITORY_ROOT/build/ios/core/CMakeLists.txt")" -eq 1 ] &&
+	[ "$(printf '%s\n' "$CORE_PROBE_LINK_ENTRIES" | grep -c .)" -eq 3 ] &&
+	[ "$(printf '%s\n' "$CORE_PROBE_LINK_ENTRIES" | grep -F -c 'PyrogenesisCoreIOS')" -eq 1 ] &&
+	[ "$(printf '%s\n' "$CORE_PROBE_LINK_BLOCK" | grep -F -c '"-framework ')" -eq 2 ] &&
+	[ "$(printf '%s\n' "$CORE_PROBE_LINK_BLOCK" | grep -F -c '"-framework Foundation"')" -eq 1 ] &&
+	[ "$(printf '%s\n' "$CORE_PROBE_LINK_BLOCK" | grep -F -c '"-framework UIKit"')" -eq 1 ] &&
+	[ "$(grep -F -c 'timer_Init();' "$REPOSITORY_ROOT/source/platform/probe/CoreProbe.mm")" -eq 1 ] &&
+	grep -F 'M3_TIMER_INIT_PASS' "$REPOSITORY_ROOT/source/platform/probe/CoreProbe.mm" >/dev/null &&
+	grep -F 'M3_CORE_BOOTSTRAP_PASS' "$REPOSITORY_ROOT/source/platform/probe/CoreProbe.mm" >/dev/null &&
+	! grep -E 'Threading|M3_C2_' "$REPOSITORY_ROOT/source/platform/probe/CoreProbe.mm" >/dev/null &&
 	grep -F 'otool -L' "$REPOSITORY_ROOT/.github/workflows/ipados-m3-core.yml" >/dev/null &&
 	grep -F 'nm -u' "$REPOSITORY_ROOT/.github/workflows/ipados-m3-core.yml" >/dev/null &&
+	grep -F 'M3_TIMER_INIT_PASS' "$REPOSITORY_ROOT/.github/workflows/ipados-m3-core.yml" >/dev/null &&
+	grep -F 'M3_CORE_BOOTSTRAP_PASS' "$REPOSITORY_ROOT/.github/workflows/ipados-m3-core.yml" >/dev/null &&
+	! grep -E 'PyrogenesisThreadProbe|M3_C2_' "$REPOSITORY_ROOT/.github/workflows/ipados-m3-core.yml" >/dev/null &&
 	! grep -F 'GameSetup.cpp' "$REPOSITORY_ROOT/build/ios/core/CMakeLists.txt" >/dev/null; then
 	pass "M3-C1 core probe CMake, probe source, and workflow configuration are valid"
 else
 	fail "M3-C1 core probe static checks failed"
+fi
+
+THREAD_CMAKE="$REPOSITORY_ROOT/build/ios/core/CMakeLists.txt"
+THREAD_PROBE="$REPOSITORY_ROOT/source/platform/probe/ThreadProbe.mm"
+THREAD_WORKFLOW="$REPOSITORY_ROOT/.github/workflows/ipados-m3-thread.yml"
+THREAD_DOCUMENTATION="$REPOSITORY_ROOT/docs/ipados/M3_THREAD_BOOTSTRAP.md"
+M3_C2_STATIC_OK=1
+
+for required_file in "$THREAD_CMAKE" "$THREAD_PROBE" "$THREAD_WORKFLOW" "$THREAD_DOCUMENTATION"; do
+	if [ ! -f "$required_file" ]; then
+		M3_C2_STATIC_OK=0
+	fi
+done
+
+EXPECTED_UPSTREAM_SOURCES='
+source/lib/timer.cpp
+source/lib/module_init.cpp
+source/lib/debug.cpp
+source/lib/fnv_hash.cpp
+source/lib/status.cpp
+source/lib/utf8.cpp
+source/lib/path.cpp
+source/lib/app_hooks.cpp
+source/lib/secure_crt.cpp
+source/lib/wsecure_crt.cpp
+source/lib/sysdep/os/unix/unix.cpp
+source/lib/sysdep/os/unix/udbg.cpp
+source/lib/sysdep/os/osx/odbg.cpp
+source/lib/sysdep/os/ios/ios.cpp'
+for expected_source in $EXPECTED_UPSTREAM_SOURCES; do
+	if [ "$(printf '%s\n' "$CORE_LIBRARY_BLOCK" | grep -F -c "$expected_source" || true)" -ne 1 ]; then
+		M3_C2_STATIC_OK=0
+	fi
+done
+THREAD_TARGET_BLOCK=$(sed -n '/add_executable(PyrogenesisThreadProbe/,/source\/ps\/Threading.cpp")/p' "$THREAD_CMAKE" 2>/dev/null || true)
+THREAD_LINK_BLOCK=$(sed -n '/target_link_libraries(PyrogenesisThreadProbe PRIVATE/,/"-framework UIKit")/p' "$THREAD_CMAKE" 2>/dev/null || true)
+THREAD_LINK_ENTRIES=$(printf '%s\n' "$THREAD_LINK_BLOCK" | sed '1d; s/)[[:space:]]*$//; /^[[:space:]]*$/d')
+if [ "$(printf '%s\n' "$CORE_LIBRARY_BLOCK" | grep -E -c '^[[:space:]]*"\$\{IPADOS_UPSTREAM_SOURCE\}/source/.*\.cpp"' || true)" -ne 14 ] ||
+	[ "$(printf '%s\n' "$THREAD_TARGET_BLOCK" | grep -E -c '^[[:space:]]*"\$\{IPADOS_UPSTREAM_SOURCE\}/source/.*\.cpp"' || true)" -ne 1 ] ||
+	[ "$(printf '%s\n' "$THREAD_TARGET_BLOCK" | grep -F -c 'source/ps/Threading.cpp' || true)" -ne 1 ] ||
+	[ "$(grep -E -c '^[[:space:]]*"\$\{IPADOS_UPSTREAM_SOURCE\}/source/.*\.cpp"' "$THREAD_CMAKE" || true)" -ne 15 ]; then
+	M3_C2_STATIC_OK=0
+fi
+if printf '%s\n' "$CORE_LIBRARY_BLOCK" | grep -F 'Threading.cpp' >/dev/null; then
+	M3_C2_STATIC_OK=0
+fi
+if ! printf '%s\n' "$THREAD_TARGET_BLOCK" | grep -F 'EXCLUDE_FROM_ALL' >/dev/null ||
+	[ "$(printf '%s\n' "$THREAD_TARGET_BLOCK" | grep -E -c '\.(mm|cpp)"' || true)" -ne 2 ] ||
+	[ "$(printf '%s\n' "$THREAD_TARGET_BLOCK" | grep -F -c 'source/platform/probe/ThreadProbe.mm' || true)" -ne 1 ] ||
+	[ "$(printf '%s\n' "$THREAD_TARGET_BLOCK" | grep -F -c 'source/ps/Threading.cpp' || true)" -ne 1 ]; then
+	M3_C2_STATIC_OK=0
+fi
+
+REQUIRED_THREAD_MARKERS='
+M3_C2_CORE_REGRESSION_STARTED
+M3_C2_CORE_REGRESSION_PASS
+M3_THREAD_BOOTSTRAP_STARTED
+M3_MAIN_THREAD_PASS
+M3_WORKER_THREAD_PASS
+M3_MAIN_THREAD_POST_JOIN_PASS
+M3_DEBUG_THREAD_NAME_PASS
+M3_DEBUG_FILTER_PASS
+M3_C2_BOOTSTRAP_PASS'
+for required_marker in $REQUIRED_THREAD_MARKERS; do
+	if [ "$(grep -F -c "$required_marker" "$THREAD_PROBE" || true)" -ne 1 ] ||
+		[ "$(grep -F -c "$required_marker" "$THREAD_WORKFLOW" || true)" -ne 1 ]; then
+		M3_C2_STATIC_OK=0
+	fi
+done
+
+if [ "$(grep -F -c 'target_compile_definitions(PyrogenesisThreadProbe PRIVATE CONFIG_ENABLE_PCH=0)' "$THREAD_CMAKE" || true)" -ne 1 ] ||
+	[ "$(grep -F -c 'target_link_libraries(PyrogenesisThreadProbe PRIVATE' "$THREAD_CMAKE" || true)" -ne 1 ] ||
+	[ "$(printf '%s\n' "$THREAD_LINK_ENTRIES" | grep -c . || true)" -ne 3 ] ||
+	[ "$(printf '%s\n' "$THREAD_LINK_BLOCK" | grep -F -c 'PyrogenesisCoreIOS' || true)" -ne 1 ] ||
+	[ "$(printf '%s\n' "$THREAD_LINK_BLOCK" | grep -F -c '"-framework Foundation"' || true)" -ne 1 ] ||
+	[ "$(printf '%s\n' "$THREAD_LINK_BLOCK" | grep -F -c '"-framework UIKit"' || true)" -ne 1 ] ||
+	[ "$(grep -F -c 'org.example.pyrogenesis.thread-probe' "$THREAD_CMAKE" || true)" -ne 1 ] ||
+	[ "$(grep -F -c 'Threading::SetMainThread();' "$THREAD_PROBE" || true)" -ne 1 ] ||
+	[ "$(grep -F -c 'Threading::IsMainThread()' "$THREAD_PROBE" || true)" -ne 3 ] ||
+	[ "$(grep -F -c 'std::thread worker' "$THREAD_PROBE" || true)" -ne 1 ] ||
+	[ "$(grep -F -c 'worker.join();' "$THREAD_PROBE" || true)" -ne 1 ] ||
+	grep -F '.detach(' "$THREAD_PROBE" >/dev/null ||
+	[ "$(grep -F -c 'debug_SetThreadName("main");' "$THREAD_PROBE" || true)" -ne 1 ] ||
+	[ "$(grep -F -c 'pthread_getname_np(' "$THREAD_PROBE" || true)" -ne 1 ] ||
+	[ "$(grep -F -c 'debug_filter_allows("FILES|M3-C2")' "$THREAD_PROBE" || true)" -ne 2 ] ||
+	[ "$(grep -F -c 'debug_filter_add("FILES");' "$THREAD_PROBE" || true)" -ne 1 ] ||
+	[ "$(grep -F -c 'M3_DEBUG_FILTER_BEFORE=%d' "$THREAD_PROBE" || true)" -ne 2 ] ||
+	[ "$(grep -F -c 'M3_DEBUG_FILTER_AFTER=%d' "$THREAD_PROBE" || true)" -ne 2 ] ||
+	grep -E '(^|[^[:alnum:]_])(exit|_exit|abort)[[:space:]]*\(' "$THREAD_PROBE" >/dev/null; then
+	M3_C2_STATIC_OK=0
+fi
+
+if [ "$(grep -F -c 'name: iPadOS M3 Thread Bootstrap' "$THREAD_WORKFLOW" || true)" -ne 1 ] ||
+	[ "$(grep -F -c -- '-scheme PyrogenesisThreadProbe' "$THREAD_WORKFLOW" || true)" -ne 2 ] ||
+	[ "$(grep -F -c -- '-sdk iphoneos' "$THREAD_WORKFLOW" || true)" -ne 1 ] ||
+	[ "$(grep -F -c -- '-sdk iphonesimulator' "$THREAD_WORKFLOW" || true)" -ne 1 ] ||
+	[ "$(grep -F -c 'sh scripts/ios/apply-upstream-patches.sh' "$THREAD_WORKFLOW" || true)" -ne 1 ] ||
+	[ "$(grep -F -c 'cmake -S build/ios/core' "$THREAD_WORKFLOW" || true)" -ne 2 ] ||
+	[ "$(grep -F -c 'CODE_SIGNING_ALLOWED=NO' "$THREAD_WORKFLOW" || true)" -ne 2 ] ||
+	[ "$(grep -F -c 'CODE_SIGNING_REQUIRED=NO' "$THREAD_WORKFLOW" || true)" -ne 2 ] ||
+	[ "$(grep -F -c 'CompileC .*Threading\.o .*source/ps/Threading\.cpp' "$THREAD_WORKFLOW" || true)" -ne 2 ] ||
+	[ "$(grep -F -c '** BUILD SUCCEEDED **' "$THREAD_WORKFLOW" || true)" -ne 2 ] ||
+	[ "$(grep -F -c 'otool -L' "$THREAD_WORKFLOW" || true)" -ne 2 ] ||
+	[ "$(grep -F -c 'nm -u' "$THREAD_WORKFLOW" || true)" -ne 2 ] ||
+	[ "$(grep -F -c 'error: prohibited dynamic dependency' "$THREAD_WORKFLOW" || true)" -ne 2 ] ||
+	[ "$(grep -F -c 'error: prohibited symbol leakage' "$THREAD_WORKFLOW" || true)" -ne 2 ] ||
+	[ "$(grep -F -c '_al[A-Z][A-Za-z0-9_]*' "$THREAD_WORKFLOW" || true)" -ne 2 ] ||
+	[ "$(grep -F -c 'simctl install' "$THREAD_WORKFLOW" || true)" -ne 1 ] ||
+	[ "$(grep -F -c 'simctl launch' "$THREAD_WORKFLOW" || true)" -ne 1 ] ||
+	[ "$(grep -F -c 'simulator-selection.txt' "$THREAD_WORKFLOW" || true)" -ne 2 ] ||
+	[ "$(grep -F -c 'simulator_name=%s' "$THREAD_WORKFLOW" || true)" -ne 1 ] ||
+	[ "$(grep -F -c 'simulator_runtime=%s' "$THREAD_WORKFLOW" || true)" -ne 1 ] ||
+	[ "$(grep -F -c 'simulator_udid=%s' "$THREAD_WORKFLOW" || true)" -ne 1 ] ||
+	[ "$(grep -F -c 'M3_MAIN_IS_MAIN=1' "$THREAD_WORKFLOW" || true)" -ne 1 ] ||
+	[ "$(grep -F -c 'M3_WORKER_IS_MAIN=0' "$THREAD_WORKFLOW" || true)" -ne 1 ] ||
+	[ "$(grep -F -c 'M3_WORKER_JOINED=1' "$THREAD_WORKFLOW" || true)" -ne 1 ] ||
+	[ "$(grep -F -c 'M3_MAIN_POST_JOIN_IS_MAIN=1' "$THREAD_WORKFLOW" || true)" -ne 1 ] ||
+	[ "$(grep -F -c 'M3_PTHREAD_GETNAME_RESULT=0' "$THREAD_WORKFLOW" || true)" -ne 1 ] ||
+	[ "$(grep -F -c 'M3_DEBUG_THREAD_NAME_VALUE=main' "$THREAD_WORKFLOW" || true)" -ne 1 ] ||
+	[ "$(grep -F -c 'M3_DEBUG_FILTER_BEFORE=0' "$THREAD_WORKFLOW" || true)" -ne 1 ] ||
+	[ "$(grep -F -c 'M3_DEBUG_FILTER_AFTER=1' "$THREAD_WORKFLOW" || true)" -ne 1 ] ||
+	[ "$(grep -F -c 'M3_C2_BOOTSTRAP_FAIL' "$THREAD_WORKFLOW" || true)" -ne 1 ] ||
+	[ "$(grep -F -c 'if count != 1:' "$THREAD_WORKFLOW" || true)" -ne 1 ] ||
+	[ "$(grep -F -c 'if positions != sorted(positions):' "$THREAD_WORKFLOW" || true)" -ne 1 ] ||
+	[ "$(grep -F -c 'if marker in text:' "$THREAD_WORKFLOW" || true)" -ne 1 ] ||
+	[ "$(grep -F -c 'simctl terminate' "$THREAD_WORKFLOW" || true)" -ne 2 ] ||
+	grep -F 'simctl terminate "$SIMULATOR_UDID" "$THREAD_BUNDLE_ID" || true' "$THREAD_WORKFLOW" >/dev/null ||
+	grep -E 'secrets\.|DEVELOPMENT_TEAM|PROVISIONING_PROFILE|CODE_SIGN_IDENTITY|CODE_SIGNING_ALLOWED[[:space:]]*=[[:space:]]*YES|git[[:space:]]+lfs|build-ios-deps|devicectl|ios-deploy|(^|[[:space:]])(curl|wget)([[:space:]]|$)|git[[:space:]]+(reset[[:space:]]+--hard|clean|stash|rebase|push[[:space:]]+--force)' "$THREAD_WORKFLOW" >/dev/null; then
+	M3_C2_STATIC_OK=0
+fi
+
+if grep -i -E 'Profiler2|Paths|CreateVfs|(^|[^[:alnum:]_])VFS([^[:alnum:]_]|$)|GameSetup|EarlyInit|Script::Engine|CXeromyces|(^|[^[:alnum:]_])SDL2?([^[:alnum:]_]|$)|SpiderMonkey|mozjs|Renderer|SoundManager|(^|[^[:alnum:]_])Audio([^[:alnum:]_]|$)|NetClient|NetServer|Networking|MoltenVK|Vulkan|OpenAL|(^|[^[:alnum:]_])ENet([^[:alnum:]_]|$)|fmt|Boost' "$THREAD_CMAKE" "$THREAD_PROBE" >/dev/null ||
+	[ "$(grep -F -c 'M3-C2: IN PROGRESS / NOT VERIFIED' "$THREAD_DOCUMENTATION" || true)" -ne 1 ] ||
+	grep -F 'M3-C2: PASS' "$THREAD_DOCUMENTATION" >/dev/null; then
+	M3_C2_STATIC_OK=0
+fi
+
+if [ "$M3_C2_STATIC_OK" -eq 1 ]; then
+	pass "M3-C2 thread probe, isolated source closure, workflow, and pre-CI status are valid"
+else
+	fail "M3-C2 thread bootstrap static checks failed"
 fi
 
 if grep -F 'set(IPADOS_BUNDLE_IDENTIFIER "org.example.pyrogenesis.ipadshell"' \

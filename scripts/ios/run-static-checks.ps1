@@ -497,9 +497,34 @@ else
 $coreCmakeFile = Join-Path $RepositoryRoot 'build\ios\core\CMakeLists.txt'
 $coreProbeFile = Join-Path $RepositoryRoot 'source\platform\probe\CoreProbe.mm'
 $coreWorkflowFile = Join-Path $RepositoryRoot '.github\workflows\ipados-m3-core.yml'
+$coreCmakeText = if (Test-Path -LiteralPath $coreCmakeFile)
+{
+	Get-Content -LiteralPath $coreCmakeFile -Raw
+}
+else
+{
+	''
+}
+$coreLibraryBlock = [regex]::Match(
+	$coreCmakeText,
+	'add_library\(PyrogenesisCoreIOS STATIC(?<Body>[\s\S]*?)\)')
+$coreProbeTargetBlock = [regex]::Match(
+	$coreCmakeText,
+	'add_executable\(PyrogenesisCoreProbe(?<Body>[\s\S]*?)\)')
+$coreProbeLinkBlock = [regex]::Match(
+	$coreCmakeText,
+	'target_link_libraries\(PyrogenesisCoreProbe PRIVATE(?<Body>[\s\S]*?)\)')
+$coreProbeLinkEntries = @(
+	$coreProbeLinkBlock.Groups['Body'].Value -split '\r?\n' |
+		ForEach-Object { $_.Trim() } |
+		Where-Object { $_ -ne '' }
+)
 if ((Test-Path -LiteralPath $coreCmakeFile) -and
 	(Test-Path -LiteralPath $coreProbeFile) -and
 	(Test-Path -LiteralPath $coreWorkflowFile) -and
+	$coreLibraryBlock.Success -and
+	$coreProbeTargetBlock.Success -and
+	$coreProbeLinkBlock.Success -and
 	(@(Select-String -LiteralPath $coreCmakeFile -SimpleMatch 'timer.cpp').Count -gt 0) -and
 	(@(Select-String -LiteralPath $coreCmakeFile -SimpleMatch 'module_init.cpp').Count -gt 0) -and
 	(@(Select-String -LiteralPath $coreCmakeFile -SimpleMatch 'source/lib/wsecure_crt.cpp').Count -eq 1) -and
@@ -510,14 +535,23 @@ if ((Test-Path -LiteralPath $coreCmakeFile) -and
 	(@(Select-String -LiteralPath $coreCmakeFile -SimpleMatch 'source/lib/sysdep/os/osx/osx_bundle.mm').Count -eq 0) -and
 	(@(Select-String -LiteralPath $coreCmakeFile -SimpleMatch 'source/lib/sysdep/os/linux/ldbg.cpp').Count -eq 0) -and
 	(@(Select-String -LiteralPath $coreCmakeFile -SimpleMatch 'source/lib/sysdep/os/bsd/bdbg.cpp').Count -eq 0) -and
-	(@(Select-String -LiteralPath $coreCmakeFile -SimpleMatch 'CONFIG_ENABLE_PCH=0').Count -eq 1) -and
+	(@(Select-String -LiteralPath $coreCmakeFile -SimpleMatch 'target_compile_definitions(PyrogenesisCoreIOS PRIVATE CONFIG_ENABLE_PCH=0)').Count -eq 1) -and
 	(@(Select-String -LiteralPath $coreCmakeFile -SimpleMatch 'target_link_libraries(PyrogenesisCoreIOS').Count -eq 0) -and
 	(@(Select-String -LiteralPath $coreCmakeFile -Pattern '(?i)(fmt|boost|sdl|mozjs|spidermonkey|moltenvk|vulkan|openal|enet|vfs|renderer|network)').Count -eq 0) -and
-	(@(Select-String -LiteralPath $coreCmakeFile -SimpleMatch '"-framework ').Count -eq 2) -and
-	(@(Select-String -LiteralPath $coreCmakeFile -SimpleMatch '"-framework Foundation"').Count -eq 1) -and
-	(@(Select-String -LiteralPath $coreCmakeFile -SimpleMatch '"-framework UIKit"').Count -eq 1) -and
+	($coreProbeLinkEntries.Count -eq 3) -and
+	(@($coreProbeLinkEntries | Where-Object { $_ -eq 'PyrogenesisCoreIOS' }).Count -eq 1) -and
+	([regex]::Matches($coreProbeLinkBlock.Groups['Body'].Value, '"-framework ').Count -eq 2) -and
+	([regex]::Matches($coreProbeLinkBlock.Groups['Body'].Value, '"-framework Foundation"').Count -eq 1) -and
+	([regex]::Matches($coreProbeLinkBlock.Groups['Body'].Value, '"-framework UIKit"').Count -eq 1) -and
+	(@(Select-String -LiteralPath $coreProbeFile -SimpleMatch 'timer_Init();').Count -eq 1) -and
+	(@(Select-String -LiteralPath $coreProbeFile -SimpleMatch 'M3_TIMER_INIT_PASS').Count -gt 0) -and
+	(@(Select-String -LiteralPath $coreProbeFile -SimpleMatch 'M3_CORE_BOOTSTRAP_PASS').Count -gt 0) -and
+	(@(Select-String -LiteralPath $coreProbeFile -Pattern 'Threading|M3_C2_').Count -eq 0) -and
 	(@(Select-String -LiteralPath $coreWorkflowFile -SimpleMatch 'otool -L').Count -gt 0) -and
 	(@(Select-String -LiteralPath $coreWorkflowFile -SimpleMatch 'nm -u').Count -gt 0) -and
+	(@(Select-String -LiteralPath $coreWorkflowFile -SimpleMatch 'M3_TIMER_INIT_PASS').Count -gt 0) -and
+	(@(Select-String -LiteralPath $coreWorkflowFile -SimpleMatch 'M3_CORE_BOOTSTRAP_PASS').Count -gt 0) -and
+	(@(Select-String -LiteralPath $coreWorkflowFile -Pattern 'PyrogenesisThreadProbe|M3_C2_').Count -eq 0) -and
 	(@(Select-String -LiteralPath $coreCmakeFile -SimpleMatch 'GameSetup.cpp').Count -eq 0))
 {
 	Write-Pass 'M3-C1 core probe CMake, probe source, and workflow configuration are valid'
@@ -525,6 +559,169 @@ if ((Test-Path -LiteralPath $coreCmakeFile) -and
 else
 {
 	Write-Fail 'M3-C1 core probe static checks failed'
+}
+
+$threadProbeFile = Join-Path $RepositoryRoot 'source\platform\probe\ThreadProbe.mm'
+$threadWorkflowFile = Join-Path $RepositoryRoot '.github\workflows\ipados-m3-thread.yml'
+$threadDocumentationFile = Join-Path $RepositoryRoot 'docs\ipados\M3_THREAD_BOOTSTRAP.md'
+$threadTargetBlock = [regex]::Match(
+	$coreCmakeText,
+	'add_executable\(PyrogenesisThreadProbe(?<Body>[\s\S]*?)\)')
+$threadLinkBlock = [regex]::Match(
+	$coreCmakeText,
+	'target_link_libraries\(PyrogenesisThreadProbe PRIVATE(?<Body>[\s\S]*?)\)')
+$threadLinkEntries = @(
+	$threadLinkBlock.Groups['Body'].Value -split '\r?\n' |
+		ForEach-Object { $_.Trim() } |
+		Where-Object { $_ -ne '' }
+)
+$expectedCoreUpstreamSources = @(
+	'source/lib/timer.cpp',
+	'source/lib/module_init.cpp',
+	'source/lib/debug.cpp',
+	'source/lib/fnv_hash.cpp',
+	'source/lib/status.cpp',
+	'source/lib/utf8.cpp',
+	'source/lib/path.cpp',
+	'source/lib/app_hooks.cpp',
+	'source/lib/secure_crt.cpp',
+	'source/lib/wsecure_crt.cpp',
+	'source/lib/sysdep/os/unix/unix.cpp',
+	'source/lib/sysdep/os/unix/udbg.cpp',
+	'source/lib/sysdep/os/osx/odbg.cpp',
+	'source/lib/sysdep/os/ios/ios.cpp'
+)
+$allUpstreamCppReferences = [regex]::Matches(
+	$coreCmakeText,
+	'"\$\{IPADOS_UPSTREAM_SOURCE\}/(?<Source>source/[^"\r\n]+\.cpp)"')
+$coreUpstreamCppReferences = [regex]::Matches(
+	$coreLibraryBlock.Groups['Body'].Value,
+	'"\$\{IPADOS_UPSTREAM_SOURCE\}/(?<Source>source/[^"\r\n]+\.cpp)"')
+$threadUpstreamCppReferences = [regex]::Matches(
+	$threadTargetBlock.Groups['Body'].Value,
+	'"\$\{IPADOS_UPSTREAM_SOURCE\}/(?<Source>source/[^"\r\n]+\.cpp)"')
+$expectedSourcesExact =
+	$allUpstreamCppReferences.Count -eq 15 -and
+	$coreUpstreamCppReferences.Count -eq $expectedCoreUpstreamSources.Count -and
+	$threadUpstreamCppReferences.Count -eq 1 -and
+	$threadUpstreamCppReferences[0].Groups['Source'].Value -eq 'source/ps/Threading.cpp'
+foreach ($expectedSource in $expectedCoreUpstreamSources)
+{
+	if (@($coreUpstreamCppReferences | Where-Object {
+			$_.Groups['Source'].Value -eq $expectedSource
+		}).Count -ne 1)
+	{
+		$expectedSourcesExact = $false
+	}
+}
+$requiredThreadMarkers = @(
+	'M3_C2_CORE_REGRESSION_STARTED',
+	'M3_C2_CORE_REGRESSION_PASS',
+	'M3_THREAD_BOOTSTRAP_STARTED',
+	'M3_MAIN_THREAD_PASS',
+	'M3_WORKER_THREAD_PASS',
+	'M3_MAIN_THREAD_POST_JOIN_PASS',
+	'M3_DEBUG_THREAD_NAME_PASS',
+	'M3_DEBUG_FILTER_PASS',
+	'M3_C2_BOOTSTRAP_PASS'
+)
+$threadFilesPresent =
+	(Test-Path -LiteralPath $threadProbeFile) -and
+	(Test-Path -LiteralPath $threadWorkflowFile) -and
+	(Test-Path -LiteralPath $threadDocumentationFile)
+$threadMarkersExact = $threadFilesPresent
+if ($threadFilesPresent)
+{
+	foreach ($requiredMarker in $requiredThreadMarkers)
+	{
+		if ((@(Select-String -LiteralPath $threadProbeFile -SimpleMatch $requiredMarker).Count -ne 1) -or
+			(@(Select-String -LiteralPath $threadWorkflowFile -SimpleMatch $requiredMarker).Count -ne 1))
+		{
+			$threadMarkersExact = $false
+		}
+	}
+}
+$threadScopeFiles = @($coreCmakeFile, $threadProbeFile)
+$threadScopeViolation = $true
+if ((Test-Path -LiteralPath $coreCmakeFile) -and (Test-Path -LiteralPath $threadProbeFile))
+{
+	$threadScopeViolation = @(Select-String -LiteralPath $threadScopeFiles `
+		-Pattern '(?i)(Profiler2|Paths|CreateVfs|\bVFS\b|GameSetup|EarlyInit|Script::Engine|CXeromyces|\bSDL2?\b|SpiderMonkey|mozjs|Renderer|SoundManager|\bAudio\b|NetClient|NetServer|Networking|MoltenVK|Vulkan|OpenAL|\bENet\b|fmt|Boost)').Count -gt 0
+}
+if ($threadFilesPresent -and
+	$expectedSourcesExact -and
+	$coreLibraryBlock.Success -and
+	$threadTargetBlock.Success -and
+	$threadLinkBlock.Success -and
+	$threadTargetBlock.Groups['Body'].Value.Contains('EXCLUDE_FROM_ALL') -and
+	([regex]::Matches($threadTargetBlock.Groups['Body'].Value, '\.(?:mm|cpp)"').Count -eq 2) -and
+	([regex]::Matches($threadTargetBlock.Groups['Body'].Value, 'source/platform/probe/ThreadProbe\.mm"').Count -eq 1) -and
+	([regex]::Matches($threadTargetBlock.Groups['Body'].Value, 'source/ps/Threading\.cpp"').Count -eq 1) -and
+	(@(Select-String -LiteralPath $coreCmakeFile -SimpleMatch 'target_compile_definitions(PyrogenesisThreadProbe PRIVATE CONFIG_ENABLE_PCH=0)').Count -eq 1) -and
+	(@(Select-String -LiteralPath $coreCmakeFile -SimpleMatch 'target_link_libraries(PyrogenesisThreadProbe PRIVATE').Count -eq 1) -and
+	($threadLinkEntries.Count -eq 3) -and
+	([regex]::Matches($threadLinkBlock.Groups['Body'].Value, '\bPyrogenesisCoreIOS\b').Count -eq 1) -and
+	([regex]::Matches($threadLinkBlock.Groups['Body'].Value, '"-framework Foundation"').Count -eq 1) -and
+	([regex]::Matches($threadLinkBlock.Groups['Body'].Value, '"-framework UIKit"').Count -eq 1) -and
+	(@(Select-String -LiteralPath $coreCmakeFile -SimpleMatch 'org.example.pyrogenesis.thread-probe').Count -eq 1) -and
+	(@(Select-String -LiteralPath $threadProbeFile -SimpleMatch 'Threading::SetMainThread();').Count -eq 1) -and
+	(@(Select-String -LiteralPath $threadProbeFile -SimpleMatch 'Threading::IsMainThread()').Count -eq 3) -and
+	(@(Select-String -LiteralPath $threadProbeFile -SimpleMatch 'std::thread worker').Count -eq 1) -and
+	(@(Select-String -LiteralPath $threadProbeFile -SimpleMatch 'worker.join();').Count -eq 1) -and
+	(@(Select-String -LiteralPath $threadProbeFile -SimpleMatch '.detach(').Count -eq 0) -and
+	(@(Select-String -LiteralPath $threadProbeFile -SimpleMatch 'debug_SetThreadName("main");').Count -eq 1) -and
+	(@(Select-String -LiteralPath $threadProbeFile -SimpleMatch 'pthread_getname_np(').Count -eq 1) -and
+	(@(Select-String -LiteralPath $threadProbeFile -SimpleMatch 'debug_filter_allows("FILES|M3-C2")').Count -eq 2) -and
+	(@(Select-String -LiteralPath $threadProbeFile -SimpleMatch 'debug_filter_add("FILES");').Count -eq 1) -and
+	(@(Select-String -LiteralPath $threadProbeFile -SimpleMatch 'M3_DEBUG_FILTER_BEFORE=%d').Count -eq 2) -and
+	(@(Select-String -LiteralPath $threadProbeFile -SimpleMatch 'M3_DEBUG_FILTER_AFTER=%d').Count -eq 2) -and
+	(@(Select-String -LiteralPath $threadProbeFile -Pattern '\b(exit|_exit|abort)\s*\(').Count -eq 0) -and
+	$threadMarkersExact -and
+	(@(Select-String -LiteralPath $threadWorkflowFile -SimpleMatch 'name: iPadOS M3 Thread Bootstrap').Count -eq 1) -and
+	(@(Select-String -LiteralPath $threadWorkflowFile -SimpleMatch '-scheme PyrogenesisThreadProbe').Count -eq 2) -and
+	(@(Select-String -LiteralPath $threadWorkflowFile -SimpleMatch '-sdk iphoneos').Count -eq 1) -and
+	(@(Select-String -LiteralPath $threadWorkflowFile -SimpleMatch '-sdk iphonesimulator').Count -eq 1) -and
+	(@(Select-String -LiteralPath $threadWorkflowFile -SimpleMatch 'sh scripts/ios/apply-upstream-patches.sh').Count -eq 1) -and
+	(@(Select-String -LiteralPath $threadWorkflowFile -SimpleMatch 'cmake -S build/ios/core').Count -eq 2) -and
+	(@(Select-String -LiteralPath $threadWorkflowFile -SimpleMatch 'CODE_SIGNING_ALLOWED=NO').Count -eq 2) -and
+	(@(Select-String -LiteralPath $threadWorkflowFile -SimpleMatch 'CODE_SIGNING_REQUIRED=NO').Count -eq 2) -and
+	(@(Select-String -LiteralPath $threadWorkflowFile -SimpleMatch 'CompileC .*Threading\.o .*source/ps/Threading\.cpp').Count -eq 2) -and
+	(@(Select-String -LiteralPath $threadWorkflowFile -SimpleMatch '** BUILD SUCCEEDED **').Count -eq 2) -and
+	(@(Select-String -LiteralPath $threadWorkflowFile -SimpleMatch 'otool -L').Count -eq 2) -and
+	(@(Select-String -LiteralPath $threadWorkflowFile -SimpleMatch 'nm -u').Count -eq 2) -and
+	(@(Select-String -LiteralPath $threadWorkflowFile -SimpleMatch 'error: prohibited dynamic dependency').Count -eq 2) -and
+	(@(Select-String -LiteralPath $threadWorkflowFile -SimpleMatch 'error: prohibited symbol leakage').Count -eq 2) -and
+	(@(Select-String -LiteralPath $threadWorkflowFile -SimpleMatch '_al[A-Z][A-Za-z0-9_]*').Count -eq 2) -and
+	(@(Select-String -LiteralPath $threadWorkflowFile -SimpleMatch 'simctl install').Count -eq 1) -and
+	(@(Select-String -LiteralPath $threadWorkflowFile -SimpleMatch 'simctl launch').Count -eq 1) -and
+	(@(Select-String -LiteralPath $threadWorkflowFile -SimpleMatch 'simulator-selection.txt').Count -eq 2) -and
+	(@(Select-String -LiteralPath $threadWorkflowFile -SimpleMatch 'simulator_name=%s').Count -eq 1) -and
+	(@(Select-String -LiteralPath $threadWorkflowFile -SimpleMatch 'simulator_runtime=%s').Count -eq 1) -and
+	(@(Select-String -LiteralPath $threadWorkflowFile -SimpleMatch 'simulator_udid=%s').Count -eq 1) -and
+	(@(Select-String -LiteralPath $threadWorkflowFile -SimpleMatch 'M3_MAIN_IS_MAIN=1').Count -eq 1) -and
+	(@(Select-String -LiteralPath $threadWorkflowFile -SimpleMatch 'M3_WORKER_IS_MAIN=0').Count -eq 1) -and
+	(@(Select-String -LiteralPath $threadWorkflowFile -SimpleMatch 'M3_WORKER_JOINED=1').Count -eq 1) -and
+	(@(Select-String -LiteralPath $threadWorkflowFile -SimpleMatch 'M3_MAIN_POST_JOIN_IS_MAIN=1').Count -eq 1) -and
+	(@(Select-String -LiteralPath $threadWorkflowFile -SimpleMatch 'M3_PTHREAD_GETNAME_RESULT=0').Count -eq 1) -and
+	(@(Select-String -LiteralPath $threadWorkflowFile -SimpleMatch 'M3_DEBUG_THREAD_NAME_VALUE=main').Count -eq 1) -and
+	(@(Select-String -LiteralPath $threadWorkflowFile -SimpleMatch 'M3_DEBUG_FILTER_BEFORE=0').Count -eq 1) -and
+	(@(Select-String -LiteralPath $threadWorkflowFile -SimpleMatch 'M3_DEBUG_FILTER_AFTER=1').Count -eq 1) -and
+	(@(Select-String -LiteralPath $threadWorkflowFile -SimpleMatch 'M3_C2_BOOTSTRAP_FAIL').Count -eq 1) -and
+	(@(Select-String -LiteralPath $threadWorkflowFile -SimpleMatch 'if count != 1:').Count -eq 1) -and
+	(@(Select-String -LiteralPath $threadWorkflowFile -SimpleMatch 'if positions != sorted(positions):').Count -eq 1) -and
+	(@(Select-String -LiteralPath $threadWorkflowFile -SimpleMatch 'if marker in text:').Count -eq 1) -and
+	(@(Select-String -LiteralPath $threadWorkflowFile -SimpleMatch 'simctl terminate').Count -eq 2) -and
+	(@(Select-String -LiteralPath $threadWorkflowFile -SimpleMatch 'simctl terminate "$SIMULATOR_UDID" "$THREAD_BUNDLE_ID" || true').Count -eq 0) -and
+	(@(Select-String -LiteralPath $threadWorkflowFile -Pattern 'secrets\.|DEVELOPMENT_TEAM|PROVISIONING_PROFILE|CODE_SIGN_IDENTITY|CODE_SIGNING_ALLOWED\s*=\s*YES|git\s+lfs|build-ios-deps|devicectl|ios-deploy|(^|\s)(curl|wget)(\s|$)|git\s+(reset\s+--hard|clean|stash|rebase|push\s+--force)').Count -eq 0) -and
+	-not $threadScopeViolation -and
+	(@(Select-String -LiteralPath $threadDocumentationFile -SimpleMatch 'M3-C2: IN PROGRESS / NOT VERIFIED').Count -eq 1) -and
+	(@(Select-String -LiteralPath $threadDocumentationFile -SimpleMatch 'M3-C2: PASS').Count -eq 0))
+{
+	Write-Pass 'M3-C2 thread probe, isolated source closure, workflow, and pre-CI status are valid'
+}
+else
+{
+	Write-Fail 'M3-C2 thread bootstrap static checks failed'
 }
 
 $cmakeText = Get-Content -LiteralPath (Join-Path $RepositoryRoot 'build\ios\CMakeLists.txt') -Raw

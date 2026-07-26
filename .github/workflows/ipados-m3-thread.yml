@@ -1,0 +1,419 @@
+name: iPadOS M3 Thread Bootstrap
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feature/ipados-native-port
+    paths:
+      - .github/workflows/ipados-m3-thread.yml
+      - build/ios/core/**
+      - patches/upstream/**
+      - scripts/ios/apply-upstream-patches.sh
+      - scripts/ios/prepare-upstream-source.sh
+      - source/platform/probe/ThreadProbe.mm
+      - UPSTREAM_REVISION
+  pull_request:
+    branches:
+      - feature/ipados-native-port
+    paths:
+      - .github/workflows/ipados-m3-thread.yml
+      - build/ios/core/**
+      - patches/upstream/**
+      - scripts/ios/apply-upstream-patches.sh
+      - scripts/ios/prepare-upstream-source.sh
+      - source/platform/probe/ThreadProbe.mm
+      - UPSTREAM_REVISION
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  m3-thread-bootstrap:
+    name: M3-C2 thread bootstrap validation
+    runs-on: macos-15
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout port repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+
+      - name: Initialize CI paths
+        run: |
+          set -euo pipefail
+          IPADOS_ARTIFACT_ROOT="${RUNNER_TEMP:-/tmp}/ipados-m3-thread-artifacts"
+          IPADOS_UPSTREAM_WORKSPACE="${RUNNER_TEMP:-/tmp}/ipados-upstream-source"
+          mkdir -p "$IPADOS_ARTIFACT_ROOT"
+          echo "IPADOS_ARTIFACT_ROOT=$IPADOS_ARTIFACT_ROOT" >> "$GITHUB_ENV"
+          echo "IPADOS_UPSTREAM_WORKSPACE=$IPADOS_UPSTREAM_WORKSPACE" >> "$GITHUB_ENV"
+
+      - name: Prepare pinned upstream source
+        run: |
+          set -euo pipefail
+          sh scripts/ios/prepare-upstream-source.sh 2>&1 |
+            tee "$IPADOS_ARTIFACT_ROOT/upstream-prepare.txt"
+
+      - name: Verify exact upstream HEAD and thread sources
+        run: |
+          set -euo pipefail
+          upstream_head=$(git -C "$IPADOS_UPSTREAM_WORKSPACE" rev-parse HEAD)
+          printf 'upstream_head=%s\n' "$upstream_head" |
+            tee "$IPADOS_ARTIFACT_ROOT/upstream-head.txt"
+          if [ "$upstream_head" != "eae57d9aab66511a22a869192b7ec72feeaedc7a" ]; then
+            echo "error: upstream HEAD mismatch" >&2
+            exit 1
+          fi
+          test -f "$IPADOS_UPSTREAM_WORKSPACE/source/ps/Threading.cpp"
+          test -f "$IPADOS_UPSTREAM_WORKSPACE/source/ps/ThreadUtil.h"
+          echo "PASS: exact pinned upstream thread sources are present"
+
+      - name: Apply upstream platform patches
+        run: |
+          set -euo pipefail
+          sh scripts/ios/apply-upstream-patches.sh "$IPADOS_UPSTREAM_WORKSPACE" 2>&1 |
+            tee "$IPADOS_ARTIFACT_ROOT/patch-application.txt"
+
+      - name: Configure iphoneos thread probe
+        run: |
+          set -euo pipefail
+          cmake -S build/ios/core -B "$RUNNER_TEMP/thread-iphoneos" -G Xcode \
+            -DCMAKE_SYSTEM_NAME=iOS \
+            -DCMAKE_OSX_SYSROOT=iphoneos \
+            -DIPADOS_UPSTREAM_SOURCE="$IPADOS_UPSTREAM_WORKSPACE" \
+            2>&1 | tee "$IPADOS_ARTIFACT_ROOT/cmake-iphoneos-thread.txt"
+          echo "PASS: CMake generated iphoneos thread probe project"
+
+      - name: Build iphoneos arm64 unsigned
+        run: |
+          set -euo pipefail
+          build_log="$IPADOS_ARTIFACT_ROOT/xcodebuild-iphoneos-thread.txt"
+          xcodebuild -project "$RUNNER_TEMP/thread-iphoneos/PyrogenesisCoreProbe.xcodeproj" \
+            -scheme PyrogenesisThreadProbe \
+            -configuration Debug \
+            -sdk iphoneos \
+            -arch arm64 \
+            -destination 'generic/platform=iOS' \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            2>&1 | tee "$build_log"
+
+          grep -F '** BUILD SUCCEEDED **' "$build_log" >/dev/null
+          compile_lines=$(grep -E 'CompileC .*Threading\.o .*source/ps/Threading\.cpp' "$build_log" || true)
+          if [ -z "$compile_lines" ]; then
+            echo "error: no iphoneos CompileC evidence for Threading.cpp" >&2
+            exit 1
+          fi
+          printf '%s\n' "$compile_lines" |
+            tee "$IPADOS_ARTIFACT_ROOT/iphoneos-threading-compile-lines.txt"
+          echo "PASS: iphoneos Threading.cpp compiled and PyrogenesisThreadProbe linked"
+
+      - name: Inspect iphoneos thread probe linkage
+        run: |
+          set -euo pipefail
+          device_bin="$RUNNER_TEMP/thread-iphoneos/Debug-iphoneos/PyrogenesisThreadProbe.app/PyrogenesisThreadProbe"
+          test -x "$device_bin"
+          file "$device_bin" | tee "$IPADOS_ARTIFACT_ROOT/iphoneos-binary-file.txt"
+          xcrun lipo -info "$device_bin" | tee "$IPADOS_ARTIFACT_ROOT/iphoneos-binary-lipo.txt"
+          grep -F 'arm64' "$IPADOS_ARTIFACT_ROOT/iphoneos-binary-lipo.txt" >/dev/null
+
+          xcrun otool -L "$device_bin" |
+            tee "$IPADOS_ARTIFACT_ROOT/iphoneos-linkage-otool.txt"
+          xcrun nm -u "$device_bin" |
+            tee "$IPADOS_ARTIFACT_ROOT/iphoneos-linkage-nm-undefined.txt"
+          xcrun nm "$device_bin" |
+            tee "$IPADOS_ARTIFACT_ROOT/iphoneos-linkage-nm-all.txt" >/dev/null
+          grep -E '_+ZN9Threading(12IsMainThread|13SetMainThread)Ev' \
+            "$IPADOS_ARTIFACT_ROOT/iphoneos-linkage-nm-all.txt" |
+            tee "$IPADOS_ARTIFACT_ROOT/iphoneos-thread-symbols-nm.txt"
+          grep -E '_+ZN9Threading12IsMainThreadEv' \
+            "$IPADOS_ARTIFACT_ROOT/iphoneos-thread-symbols-nm.txt" >/dev/null
+          grep -E '_+ZN9Threading13SetMainThreadEv' \
+            "$IPADOS_ARTIFACT_ROOT/iphoneos-thread-symbols-nm.txt" >/dev/null
+
+          if grep -Eiq 'SDL|mozjs|spidermonkey|MoltenVK|Vulkan|OpenAL|enet|libboost|libfmt' \
+            "$IPADOS_ARTIFACT_ROOT/iphoneos-linkage-otool.txt"; then
+            echo "error: prohibited dynamic dependency in iphoneos thread probe" >&2
+            exit 1
+          fi
+          if grep -Eq '(_SDL_|_JS_|__ZN2JS|__ZN7mozilla|_vk[A-Za-z0-9_]*|_al[A-Z][A-Za-z0-9_]*|_alc[A-Za-z0-9_]*|_alut[A-Za-z0-9_]*|_enet_|N3fmt|N5boost|VFS|Renderer|SoundManager|NetClient|NetServer|Networking|Profiler2|GameSetup|EarlyInit|CXeromyces)' \
+            "$IPADOS_ARTIFACT_ROOT/iphoneos-linkage-nm-all.txt"; then
+            echo "error: prohibited symbol leakage in iphoneos thread probe" >&2
+            exit 1
+          fi
+          echo "PASS: iphoneos thread probe linkage is clean"
+
+      - name: Configure iphonesimulator thread probe
+        run: |
+          set -euo pipefail
+          cmake -S build/ios/core -B "$RUNNER_TEMP/thread-iphonesimulator" -G Xcode \
+            -DCMAKE_SYSTEM_NAME=iOS \
+            -DCMAKE_OSX_SYSROOT=iphonesimulator \
+            -DIPADOS_UPSTREAM_SOURCE="$IPADOS_UPSTREAM_WORKSPACE" \
+            2>&1 | tee "$IPADOS_ARTIFACT_ROOT/cmake-iphonesimulator-thread.txt"
+          echo "PASS: CMake generated iphonesimulator thread probe project"
+
+      - name: Build iphonesimulator arm64
+        run: |
+          set -euo pipefail
+          build_log="$IPADOS_ARTIFACT_ROOT/xcodebuild-iphonesimulator-thread.txt"
+          xcodebuild -project "$RUNNER_TEMP/thread-iphonesimulator/PyrogenesisCoreProbe.xcodeproj" \
+            -scheme PyrogenesisThreadProbe \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -arch arm64 \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            2>&1 | tee "$build_log"
+
+          grep -F '** BUILD SUCCEEDED **' "$build_log" >/dev/null
+          compile_lines=$(grep -E 'CompileC .*Threading\.o .*source/ps/Threading\.cpp' "$build_log" || true)
+          if [ -z "$compile_lines" ]; then
+            echo "error: no simulator CompileC evidence for Threading.cpp" >&2
+            exit 1
+          fi
+          printf '%s\n' "$compile_lines" |
+            tee "$IPADOS_ARTIFACT_ROOT/simulator-threading-compile-lines.txt"
+          echo "PASS: simulator Threading.cpp compiled and PyrogenesisThreadProbe linked"
+
+      - name: Inspect simulator thread probe linkage
+        run: |
+          set -euo pipefail
+          sim_bin="$RUNNER_TEMP/thread-iphonesimulator/Debug-iphonesimulator/PyrogenesisThreadProbe.app/PyrogenesisThreadProbe"
+          test -x "$sim_bin"
+          file "$sim_bin" | tee "$IPADOS_ARTIFACT_ROOT/simulator-binary-file.txt"
+          xcrun lipo -info "$sim_bin" | tee "$IPADOS_ARTIFACT_ROOT/simulator-binary-lipo.txt"
+          grep -F 'arm64' "$IPADOS_ARTIFACT_ROOT/simulator-binary-lipo.txt" >/dev/null
+
+          xcrun otool -L "$sim_bin" |
+            tee "$IPADOS_ARTIFACT_ROOT/simulator-linkage-otool.txt"
+          xcrun nm -u "$sim_bin" |
+            tee "$IPADOS_ARTIFACT_ROOT/simulator-linkage-nm-undefined.txt"
+          xcrun nm "$sim_bin" |
+            tee "$IPADOS_ARTIFACT_ROOT/simulator-linkage-nm-all.txt" >/dev/null
+          grep -E '_+ZN9Threading(12IsMainThread|13SetMainThread)Ev' \
+            "$IPADOS_ARTIFACT_ROOT/simulator-linkage-nm-all.txt" |
+            tee "$IPADOS_ARTIFACT_ROOT/simulator-thread-symbols-nm.txt"
+          grep -E '_+ZN9Threading12IsMainThreadEv' \
+            "$IPADOS_ARTIFACT_ROOT/simulator-thread-symbols-nm.txt" >/dev/null
+          grep -E '_+ZN9Threading13SetMainThreadEv' \
+            "$IPADOS_ARTIFACT_ROOT/simulator-thread-symbols-nm.txt" >/dev/null
+
+          if grep -Eiq 'SDL|mozjs|spidermonkey|MoltenVK|Vulkan|OpenAL|enet|libboost|libfmt' \
+            "$IPADOS_ARTIFACT_ROOT/simulator-linkage-otool.txt"; then
+            echo "error: prohibited dynamic dependency in simulator thread probe" >&2
+            exit 1
+          fi
+          if grep -Eq '(_SDL_|_JS_|__ZN2JS|__ZN7mozilla|_vk[A-Za-z0-9_]*|_al[A-Z][A-Za-z0-9_]*|_alc[A-Za-z0-9_]*|_alut[A-Za-z0-9_]*|_enet_|N3fmt|N5boost|VFS|Renderer|SoundManager|NetClient|NetServer|Networking|Profiler2|GameSetup|EarlyInit|CXeromyces)' \
+            "$IPADOS_ARTIFACT_ROOT/simulator-linkage-nm-all.txt"; then
+            echo "error: prohibited symbol leakage in simulator thread probe" >&2
+            exit 1
+          fi
+          echo "PASS: simulator thread probe linkage is clean"
+
+      - name: Boot available iPad Simulator
+        run: |
+          set -euo pipefail
+          xcrun simctl list devices available |
+            tee "$IPADOS_ARTIFACT_ROOT/simulator-devices.txt"
+          devices_json="$IPADOS_ARTIFACT_ROOT/simulator-devices.json"
+          xcrun simctl list devices available -j > "$devices_json"
+          simulator_selection=$(python3 - "$devices_json" <<'PY'
+          import json
+          import re
+          import sys
+
+          with open(sys.argv[1], encoding="utf-8") as handle:
+              payload = json.load(handle)
+
+          candidates = []
+          for runtime, devices in payload.get("devices", {}).items():
+              if ".iOS-" not in runtime:
+                  continue
+              match = re.search(r"\.iOS-([0-9-]+)$", runtime)
+              if not match:
+                  continue
+              version = tuple(int(part) for part in match.group(1).split("-"))
+              for device in devices:
+                  name = device.get("name", "")
+                  if device.get("isAvailable") and name.startswith("iPad"):
+                      candidates.append((
+                          device.get("state") == "Booted",
+                          version,
+                          name,
+                          device["udid"],
+                          runtime,
+                      ))
+
+          if not candidates:
+              raise SystemExit("no available iPad simulator found")
+
+          _, _, name, udid, runtime = sorted(candidates, reverse=True)[0]
+          print(f"{runtime}\t{name}\t{udid}")
+          PY
+          )
+          IFS=$'\t' read -r sim_runtime sim_name sim_udid <<EOF
+          $simulator_selection
+          EOF
+          echo "SIMULATOR_UDID=$sim_udid" >> "$GITHUB_ENV"
+          echo "SIMULATOR_NAME=$sim_name" >> "$GITHUB_ENV"
+          echo "SIMULATOR_RUNTIME=$sim_runtime" >> "$GITHUB_ENV"
+          {
+            printf 'simulator_name=%s\n' "$sim_name"
+            printf 'simulator_runtime=%s\n' "$sim_runtime"
+            printf 'simulator_udid=%s\n' "$sim_udid"
+          } | tee "$IPADOS_ARTIFACT_ROOT/simulator-selection.txt"
+          xcrun simctl boot "$sim_udid" || true
+          xcrun simctl bootstatus "$sim_udid" -b
+          echo "PASS: selected iPad Simulator is booted"
+
+      - name: Install simulator thread probe
+        run: |
+          set -euo pipefail
+          app_bundle="$RUNNER_TEMP/thread-iphonesimulator/Debug-iphonesimulator/PyrogenesisThreadProbe.app"
+          test -d "$app_bundle"
+          bundle_id=$(plutil -extract CFBundleIdentifier raw "$app_bundle/Info.plist")
+          if [ "$bundle_id" != "org.example.pyrogenesis.thread-probe" ]; then
+            echo "error: unexpected thread probe bundle identifier: $bundle_id" >&2
+            exit 1
+          fi
+          xcrun simctl install "$SIMULATOR_UDID" "$app_bundle"
+          echo "THREAD_APP_BUNDLE=$app_bundle" >> "$GITHUB_ENV"
+          echo "THREAD_BUNDLE_ID=$bundle_id" >> "$GITHUB_ENV"
+          echo "PASS: simulator thread probe installed"
+
+      - name: Launch and validate simulator thread probe
+        run: |
+          set -euo pipefail
+          terminated=0
+          cleanup() {
+            if [ "$terminated" -eq 0 ]; then
+              xcrun simctl terminate "$SIMULATOR_UDID" "$THREAD_BUNDLE_ID" \
+                >> "$IPADOS_ARTIFACT_ROOT/simulator-terminate.txt" 2>&1 || true
+            fi
+          }
+          trap cleanup EXIT
+
+          launch_output=$(xcrun simctl launch "$SIMULATOR_UDID" "$THREAD_BUNDLE_ID" 2>&1 |
+            tee "$IPADOS_ARTIFACT_ROOT/simulator-launch.txt")
+          app_pid=$(printf '%s\n' "$launch_output" |
+            sed -n 's/^.*: \([0-9][0-9]*\)$/\1/p' |
+            tail -n 1)
+          if [ -z "$app_pid" ]; then
+            echo "error: failed to extract thread probe PID" >&2
+            exit 1
+          fi
+          printf 'app_pid=%s\n' "$app_pid" |
+            tee -a "$IPADOS_ARTIFACT_ROOT/simulator-selection.txt"
+
+          sleep 3
+          log_output=$(xcrun simctl spawn "$SIMULATOR_UDID" log show \
+            --last 2m \
+            --style compact \
+            --predicate "processID == $app_pid AND eventMessage CONTAINS \"Pyrogenesis ThreadProbe\"" \
+            2>&1)
+          printf '%s\n' "$log_output" |
+            tee "$IPADOS_ARTIFACT_ROOT/simulator-unified-log.txt"
+
+          python3 - "$IPADOS_ARTIFACT_ROOT/simulator-unified-log.txt" <<'PY' |
+            tee "$IPADOS_ARTIFACT_ROOT/simulator-thread-markers.txt"
+          import re
+          import sys
+
+          text = open(sys.argv[1], encoding="utf-8", errors="replace").read()
+          required = [
+              "M3_C2_CORE_REGRESSION_STARTED",
+              "M3_C2_CORE_REGRESSION_PASS",
+              "M3_THREAD_BOOTSTRAP_STARTED",
+              "M3_MAIN_IS_MAIN=1",
+              "M3_MAIN_THREAD_PASS",
+              "M3_WORKER_IS_MAIN=0",
+              "M3_WORKER_JOINED=1",
+              "M3_WORKER_THREAD_PASS",
+              "M3_MAIN_POST_JOIN_IS_MAIN=1",
+              "M3_MAIN_THREAD_POST_JOIN_PASS",
+              "M3_PTHREAD_GETNAME_RESULT=0",
+              "M3_DEBUG_THREAD_NAME_VALUE=main",
+              "M3_DEBUG_THREAD_NAME_PASS",
+              "M3_DEBUG_FILTER_BEFORE=0",
+              "M3_DEBUG_FILTER_AFTER=1",
+              "M3_DEBUG_FILTER_PASS",
+              "M3_C2_BOOTSTRAP_PASS",
+          ]
+          forbidden = [
+              "M3_C2_BOOTSTRAP_FAIL",
+              "M3_MAIN_IS_MAIN=0",
+              "M3_WORKER_IS_MAIN=1",
+              "M3_WORKER_JOINED=0",
+              "M3_MAIN_POST_JOIN_IS_MAIN=0",
+              "M3_DEBUG_FILTER_BEFORE=1",
+              "M3_DEBUG_FILTER_AFTER=0",
+          ]
+
+          positions = []
+          for marker in required:
+              count = text.count(marker)
+              if count != 1:
+                  raise SystemExit(f"expected exactly one {marker!r}, found {count}")
+              positions.append(text.index(marker))
+          for marker in forbidden:
+              if marker in text:
+                  raise SystemExit(f"forbidden marker present: {marker}")
+          if positions != sorted(positions):
+              raise SystemExit("required M3-C2 markers are out of order")
+
+          values = {}
+          for name in ("TIME_0", "TIME_1", "RESOLUTION"):
+              match = re.search(rf"M3_C2_CORE_{name}=([0-9]+(?:\.[0-9]+)?)", text)
+              if not match:
+                  raise SystemExit(f"missing M3_C2_CORE_{name} value")
+              values[name] = float(match.group(1))
+          if values["RESOLUTION"] <= 0 or values["TIME_0"] < 0 or values["TIME_1"] < values["TIME_0"]:
+              raise SystemExit(f"invalid core timer values: {values}")
+
+          for marker in required:
+              print(marker)
+          print(f"M3_C2_CORE_TIME_0={values['TIME_0']:.6f}")
+          print(f"M3_C2_CORE_TIME_1={values['TIME_1']:.6f}")
+          print(f"M3_C2_CORE_RESOLUTION={values['RESOLUTION']:.9f}")
+          print("PASS: exact M3-C2 markers, order, and timer values verified")
+          PY
+
+          if xcrun simctl terminate "$SIMULATOR_UDID" "$THREAD_BUNDLE_ID" \
+            > "$IPADOS_ARTIFACT_ROOT/simulator-terminate.txt" 2>&1; then
+            echo "PASS: simulator thread probe terminated cleanly" |
+              tee -a "$IPADOS_ARTIFACT_ROOT/simulator-terminate.txt"
+            terminated=1
+            trap - EXIT
+          else
+            cat "$IPADOS_ARTIFACT_ROOT/simulator-terminate.txt" >&2
+            echo "error: simulator thread probe termination failed" >&2
+            exit 1
+          fi
+
+      - name: Write M3-C2 summary
+        run: |
+          set -euo pipefail
+          {
+            printf 'M3-C2 Pyrogenesis Main Thread & Debug Runtime Bootstrap\n'
+            printf 'upstream_commit=eae57d9aab66511a22a869192b7ec72feeaedc7a\n'
+            printf 'iphoneos_threading_compile=PASS\n'
+            printf 'iphoneos_final_link=PASS\n'
+            printf 'simulator_threading_compile=PASS\n'
+            printf 'simulator_runtime=PASS\n'
+            printf 'physical_ipad=NOT_TESTED\n'
+            printf 'status=PASS\n'
+          } | tee "$IPADOS_ARTIFACT_ROOT/summary.txt"
+          cat "$IPADOS_ARTIFACT_ROOT/summary.txt" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload M3-C2 thread artifacts
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: ${{ always() }}
+        with:
+          name: ipados-m3-thread-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ env.IPADOS_ARTIFACT_ROOT }}
+          if-no-files-found: warn
+          retention-days: 14
