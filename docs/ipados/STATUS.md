@@ -17,8 +17,14 @@ historical provenance; live publication and run state belongs to the standalone 
 - **M3-A: PASS.** Upstream source bootstrap (run 30055025293): clone, sparse checkout, exact HEAD
   verification, 16/16 required files, no LFS objects, 61 MB workspace.
 - **M3-B: PASS.** GitHub Actions run `30129970396`: upstream source prepared (`eae57d9aab`), deterministic unified patch applied cleanly (`patches/upstream/0001-sysdep-detect-ios-platform.patch`), double-apply rejected, macOS classification validated (`OS_MACOSX=1`, `OS_IOS=0`, `OS_UNIX=1`), unsigned `iphoneos` arm64 compiled and linked, and iPad Simulator probe built, installed, launched, and reported `OS_IOS=1`, `OS_MACOSX=0`, `OS_UNIX=1`, `ARCH_ARM64=1`. Physical iPad verification remains NOT TESTED (no physical device connection).
-- **M3 engine runtime / M3-C: NOT STARTED.** No engine, SpiderMonkey, graphics, data, audio, touch, or
-  networking integration was added.
+- **M3-C1: PASS.** GitHub Actions run
+  [`30184571646`](https://github.com/o11134/0ad-ipados-port/actions/runs/30184571646), implementation
+  commit `bc9c1ec53b5fa2fac7bbbfa67bd32e8c9cecd992`: the minimal timer core compiled and linked for
+  unsigned `iphoneos` arm64 and `iphonesimulator` arm64; load-command and undefined-symbol evidence
+  was clean; the iPad Pro 11-inch (M4), iOS 18.5 simulator probe launched and reported
+  `M3_TIMER_INIT_PASS` and `M3_CORE_BOOTSTRAP_PASS`.
+- **M3-C2 / M3-D / Full Engine: NOT STARTED.** No SpiderMonkey, graphics, data, audio, touch, or
+  networking integration was added. Physical iPad execution remains **NOT TESTED**.
 
 # Repository identity
 

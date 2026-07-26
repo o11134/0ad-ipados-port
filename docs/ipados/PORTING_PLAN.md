@@ -82,7 +82,7 @@ Current result: **M3-B PASS** (run `30129970396`: deterministic unified patch ap
 
 Rollback: delete the unified patch, probe, workflow validation step, and M3 platform workflow; upstream workspace is ephemeral.
 
-### M3-C — core engine bootstrap (NOT STARTED)
+### M3-C — core engine bootstrap (IN PROGRESS — M3-C1 PASS)
 
 Add `OS_IOS` without changing macOS classification; add iOS source selection and a narrow platform
 bridge. Link the smallest core closure with audio, Atlas, lobby, DAP, miniupnpc, NVTT, and Collada
@@ -91,6 +91,17 @@ and clean shutdown. Explicitly guard `fork`/`exec`, AIO, desktop frameworks, and
 
 Acceptance: core initializes paths and logging then exits cleanly on device; desktop baseline remains
 unchanged.
+
+Current result: **M3-C1 PASS** in GitHub Actions run
+[`30184571646`](https://github.com/o11134/0ad-ipados-port/actions/runs/30184571646) at implementation
+commit `bc9c1ec53b5fa2fac7bbbfa67bd32e8c9cecd992`. The pinned upstream patch series applied cleanly;
+the minimal timer core compiled and linked for unsigned `iphoneos` arm64 and `iphonesimulator` arm64;
+load-command, undefined-symbol, and dependency-leakage checks passed; and the iPad Pro 11-inch (M4),
+iOS 18.5 simulator probe reported `M3_TIMER_INIT_PASS` and `M3_CORE_BOOTSTRAP_PASS` with valid timer
+values.
+
+Scope boundary: **M3-C2, M3-D, and the Full Engine are NOT STARTED**. Physical iPad execution is
+**NOT TESTED**; the device-SDK result does not satisfy the physical-device portion of M3-C acceptance.
 
 Rollback: compile-time iOS guards and isolated source group.
 
@@ -159,6 +170,6 @@ Verify clean rebuild instructions from a fresh official checkout. Multiplayer re
 
 ## Immediate next gate
 
-Publish the reviewed standalone export branch and evaluate its first real `iPadOS M2 Scaffold` run.
-Do not configure signing, hydrate LFS/runtime data, or begin M3 while all M2 tracks lack their required
-evidence.
+M3-C1 is complete with retained CI evidence. Any further M3 work, beginning with M3-C2, requires
+separate authorization. Do not configure signing, hydrate LFS/runtime data, or begin M3-C2, M3-D, or
+Full Engine integration under the M3-C1 scope.
