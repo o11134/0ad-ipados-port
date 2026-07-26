@@ -31,13 +31,17 @@ add_library(PyrogenesisCoreIOS STATIC
 	"${IPADOS_UPSTREAM_SOURCE}/source/lib/timer.cpp"
 	"${IPADOS_UPSTREAM_SOURCE}/source/lib/module_init.cpp"
 	"${IPADOS_UPSTREAM_SOURCE}/source/lib/debug.cpp"
+	"${IPADOS_UPSTREAM_SOURCE}/source/lib/fnv_hash.cpp"
 	"${IPADOS_UPSTREAM_SOURCE}/source/lib/status.cpp"
 	"${IPADOS_UPSTREAM_SOURCE}/source/lib/utf8.cpp"
 	"${IPADOS_UPSTREAM_SOURCE}/source/lib/path.cpp"
 	"${IPADOS_UPSTREAM_SOURCE}/source/lib/app_hooks.cpp"
 	"${IPADOS_UPSTREAM_SOURCE}/source/lib/secure_crt.cpp"
+	"${IPADOS_UPSTREAM_SOURCE}/source/lib/wsecure_crt.cpp"
 	"${IPADOS_UPSTREAM_SOURCE}/source/lib/sysdep/os/unix/unix.cpp"
-	"${IPADOS_UPSTREAM_SOURCE}/source/lib/sysdep/os/unix/udbg.cpp")
+	"${IPADOS_UPSTREAM_SOURCE}/source/lib/sysdep/os/unix/udbg.cpp"
+	"${IPADOS_UPSTREAM_SOURCE}/source/lib/sysdep/os/osx/odbg.cpp"
+	"${IPADOS_UPSTREAM_SOURCE}/source/lib/sysdep/os/ios/ios.cpp")
 
 target_include_directories(PyrogenesisCoreIOS
 	PUBLIC

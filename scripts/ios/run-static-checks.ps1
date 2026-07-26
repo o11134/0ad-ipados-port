@@ -465,12 +465,22 @@ else
 $patchFile1 = Join-Path $RepositoryRoot 'patches\upstream\0001-sysdep-detect-ios-platform.patch'
 $patchFile2 = Join-Path $RepositoryRoot 'patches\upstream\0002-timer-include-sys-time.patch'
 $patchFile3 = Join-Path $RepositoryRoot 'patches\upstream\0003-unix-ios-portability.patch'
+$patchFile4 = Join-Path $RepositoryRoot 'patches\upstream\0004-ios-executable-path.patch'
 $applyScript = Join-Path $RepositoryRoot 'scripts\ios\apply-upstream-patches.sh'
 if ((Test-Path -LiteralPath $patchFile1) -and
 	(Test-Path -LiteralPath $patchFile2) -and
 	(Test-Path -LiteralPath $patchFile3) -and
+	(Test-Path -LiteralPath $patchFile4) -and
 	(@(Select-String -LiteralPath $patchFile2 -SimpleMatch 'sys/time.h').Count -gt 0) -and
 	(@(Select-String -LiteralPath $patchFile3 -SimpleMatch 'OS_IOS').Count -gt 0) -and
+	(@(Select-String -LiteralPath $patchFile4 -SimpleMatch 'diff --git a/source/lib/sysdep/os/ios/ios.cpp b/source/lib/sysdep/os/ios/ios.cpp').Count -eq 1) -and
+	(@(Select-String -LiteralPath $patchFile4 -SimpleMatch 'new file mode 100644').Count -eq 1) -and
+	(@(Select-String -LiteralPath $patchFile4 -SimpleMatch '--- /dev/null').Count -eq 1) -and
+	(@(Select-String -LiteralPath $patchFile4 -SimpleMatch '+++ b/source/lib/sysdep/os/ios/ios.cpp').Count -eq 1) -and
+	(@(Select-String -LiteralPath $patchFile4 -SimpleMatch '+OsPath sys_ExecutablePathname()').Count -eq 1) -and
+	(@(Select-String -LiteralPath $patchFile4 -SimpleMatch '_NSGetExecutablePath').Count -gt 0) -and
+	(@(Select-String -LiteralPath $patchFile4 -SimpleMatch 'realpath').Count -gt 0) -and
+	(@(Select-String -LiteralPath $patchFile4 -SimpleMatch 'PATH_MAX').Count -eq 0) -and
 	(@(Select-String -LiteralPath $applyScript -SimpleMatch 'apply --check').Count -gt 0) -and
 	(@(Select-String -LiteralPath $applyScript -SimpleMatch '/*.patch').Count -gt 0) -and
 	(@(Select-String -LiteralPath $applyScript -SimpleMatch '--3way').Count -eq 0) -and
@@ -492,6 +502,22 @@ if ((Test-Path -LiteralPath $coreCmakeFile) -and
 	(Test-Path -LiteralPath $coreWorkflowFile) -and
 	(@(Select-String -LiteralPath $coreCmakeFile -SimpleMatch 'timer.cpp').Count -gt 0) -and
 	(@(Select-String -LiteralPath $coreCmakeFile -SimpleMatch 'module_init.cpp').Count -gt 0) -and
+	(@(Select-String -LiteralPath $coreCmakeFile -SimpleMatch 'source/lib/wsecure_crt.cpp').Count -eq 1) -and
+	(@(Select-String -LiteralPath $coreCmakeFile -SimpleMatch 'source/lib/fnv_hash.cpp').Count -eq 1) -and
+	(@(Select-String -LiteralPath $coreCmakeFile -SimpleMatch 'source/lib/sysdep/os/osx/odbg.cpp').Count -eq 1) -and
+	(@(Select-String -LiteralPath $coreCmakeFile -SimpleMatch 'source/lib/sysdep/os/ios/ios.cpp').Count -eq 1) -and
+	(@(Select-String -LiteralPath $coreCmakeFile -SimpleMatch 'source/lib/sysdep/os/osx/osx.cpp').Count -eq 0) -and
+	(@(Select-String -LiteralPath $coreCmakeFile -SimpleMatch 'source/lib/sysdep/os/osx/osx_bundle.mm').Count -eq 0) -and
+	(@(Select-String -LiteralPath $coreCmakeFile -SimpleMatch 'source/lib/sysdep/os/linux/ldbg.cpp').Count -eq 0) -and
+	(@(Select-String -LiteralPath $coreCmakeFile -SimpleMatch 'source/lib/sysdep/os/bsd/bdbg.cpp').Count -eq 0) -and
+	(@(Select-String -LiteralPath $coreCmakeFile -SimpleMatch 'CONFIG_ENABLE_PCH=0').Count -eq 1) -and
+	(@(Select-String -LiteralPath $coreCmakeFile -SimpleMatch 'target_link_libraries(PyrogenesisCoreIOS').Count -eq 0) -and
+	(@(Select-String -LiteralPath $coreCmakeFile -Pattern '(?i)(fmt|boost|sdl|mozjs|spidermonkey|moltenvk|vulkan|openal|enet|vfs|renderer|network)').Count -eq 0) -and
+	(@(Select-String -LiteralPath $coreCmakeFile -SimpleMatch '"-framework ').Count -eq 2) -and
+	(@(Select-String -LiteralPath $coreCmakeFile -SimpleMatch '"-framework Foundation"').Count -eq 1) -and
+	(@(Select-String -LiteralPath $coreCmakeFile -SimpleMatch '"-framework UIKit"').Count -eq 1) -and
+	(@(Select-String -LiteralPath $coreWorkflowFile -SimpleMatch 'otool -L').Count -gt 0) -and
+	(@(Select-String -LiteralPath $coreWorkflowFile -SimpleMatch 'nm -u').Count -gt 0) -and
 	(@(Select-String -LiteralPath $coreCmakeFile -SimpleMatch 'GameSetup.cpp').Count -eq 0))
 {
 	Write-Pass 'M3-C1 core probe CMake, probe source, and workflow configuration are valid'

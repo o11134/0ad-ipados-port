@@ -242,8 +242,17 @@ fi
 if [ -f "$REPOSITORY_ROOT/patches/upstream/0001-sysdep-detect-ios-platform.patch" ] &&
 	[ -f "$REPOSITORY_ROOT/patches/upstream/0002-timer-include-sys-time.patch" ] &&
 	[ -f "$REPOSITORY_ROOT/patches/upstream/0003-unix-ios-portability.patch" ] &&
+	[ -f "$REPOSITORY_ROOT/patches/upstream/0004-ios-executable-path.patch" ] &&
 	grep -F 'sys/time.h' "$REPOSITORY_ROOT/patches/upstream/0002-timer-include-sys-time.patch" >/dev/null &&
 	grep -F 'OS_IOS' "$REPOSITORY_ROOT/patches/upstream/0003-unix-ios-portability.patch" >/dev/null &&
+	[ "$(grep -F -c 'diff --git a/source/lib/sysdep/os/ios/ios.cpp b/source/lib/sysdep/os/ios/ios.cpp' "$REPOSITORY_ROOT/patches/upstream/0004-ios-executable-path.patch")" -eq 1 ] &&
+	[ "$(grep -F -c 'new file mode 100644' "$REPOSITORY_ROOT/patches/upstream/0004-ios-executable-path.patch")" -eq 1 ] &&
+	[ "$(grep -F -c -- '--- /dev/null' "$REPOSITORY_ROOT/patches/upstream/0004-ios-executable-path.patch")" -eq 1 ] &&
+	[ "$(grep -F -c '+++ b/source/lib/sysdep/os/ios/ios.cpp' "$REPOSITORY_ROOT/patches/upstream/0004-ios-executable-path.patch")" -eq 1 ] &&
+	[ "$(grep -F -c '+OsPath sys_ExecutablePathname()' "$REPOSITORY_ROOT/patches/upstream/0004-ios-executable-path.patch")" -eq 1 ] &&
+	grep -F '_NSGetExecutablePath' "$REPOSITORY_ROOT/patches/upstream/0004-ios-executable-path.patch" >/dev/null &&
+	grep -F 'realpath' "$REPOSITORY_ROOT/patches/upstream/0004-ios-executable-path.patch" >/dev/null &&
+	! grep -F 'PATH_MAX' "$REPOSITORY_ROOT/patches/upstream/0004-ios-executable-path.patch" >/dev/null &&
 	grep -F 'apply --check' "$REPOSITORY_ROOT/scripts/ios/apply-upstream-patches.sh" > /dev/null &&
 	grep -F '/*.patch' "$REPOSITORY_ROOT/scripts/ios/apply-upstream-patches.sh" >/dev/null &&
 	! grep -F -- '--3way' "$REPOSITORY_ROOT/scripts/ios/apply-upstream-patches.sh" >/dev/null &&
@@ -259,6 +268,22 @@ if [ -f "$REPOSITORY_ROOT/build/ios/core/CMakeLists.txt" ] &&
 	[ -f "$REPOSITORY_ROOT/.github/workflows/ipados-m3-core.yml" ] &&
 	grep -F 'timer.cpp' "$REPOSITORY_ROOT/build/ios/core/CMakeLists.txt" >/dev/null &&
 	grep -F 'module_init.cpp' "$REPOSITORY_ROOT/build/ios/core/CMakeLists.txt" >/dev/null &&
+	[ "$(grep -F -c 'source/lib/wsecure_crt.cpp' "$REPOSITORY_ROOT/build/ios/core/CMakeLists.txt")" -eq 1 ] &&
+	[ "$(grep -F -c 'source/lib/fnv_hash.cpp' "$REPOSITORY_ROOT/build/ios/core/CMakeLists.txt")" -eq 1 ] &&
+	[ "$(grep -F -c 'source/lib/sysdep/os/osx/odbg.cpp' "$REPOSITORY_ROOT/build/ios/core/CMakeLists.txt")" -eq 1 ] &&
+	[ "$(grep -F -c 'source/lib/sysdep/os/ios/ios.cpp' "$REPOSITORY_ROOT/build/ios/core/CMakeLists.txt")" -eq 1 ] &&
+	! grep -F 'source/lib/sysdep/os/osx/osx.cpp' "$REPOSITORY_ROOT/build/ios/core/CMakeLists.txt" >/dev/null &&
+	! grep -F 'source/lib/sysdep/os/osx/osx_bundle.mm' "$REPOSITORY_ROOT/build/ios/core/CMakeLists.txt" >/dev/null &&
+	! grep -F 'source/lib/sysdep/os/linux/ldbg.cpp' "$REPOSITORY_ROOT/build/ios/core/CMakeLists.txt" >/dev/null &&
+	! grep -F 'source/lib/sysdep/os/bsd/bdbg.cpp' "$REPOSITORY_ROOT/build/ios/core/CMakeLists.txt" >/dev/null &&
+	[ "$(grep -F -c 'CONFIG_ENABLE_PCH=0' "$REPOSITORY_ROOT/build/ios/core/CMakeLists.txt")" -eq 1 ] &&
+	! grep -F 'target_link_libraries(PyrogenesisCoreIOS' "$REPOSITORY_ROOT/build/ios/core/CMakeLists.txt" >/dev/null &&
+	! grep -i -E 'fmt|boost|sdl|mozjs|spidermonkey|moltenvk|vulkan|openal|enet|vfs|renderer|network' "$REPOSITORY_ROOT/build/ios/core/CMakeLists.txt" >/dev/null &&
+	[ "$(grep -F -c '"-framework ' "$REPOSITORY_ROOT/build/ios/core/CMakeLists.txt")" -eq 2 ] &&
+	[ "$(grep -F -c '"-framework Foundation"' "$REPOSITORY_ROOT/build/ios/core/CMakeLists.txt")" -eq 1 ] &&
+	[ "$(grep -F -c '"-framework UIKit"' "$REPOSITORY_ROOT/build/ios/core/CMakeLists.txt")" -eq 1 ] &&
+	grep -F 'otool -L' "$REPOSITORY_ROOT/.github/workflows/ipados-m3-core.yml" >/dev/null &&
+	grep -F 'nm -u' "$REPOSITORY_ROOT/.github/workflows/ipados-m3-core.yml" >/dev/null &&
 	! grep -F 'GameSetup.cpp' "$REPOSITORY_ROOT/build/ios/core/CMakeLists.txt" >/dev/null; then
 	pass "M3-C1 core probe CMake, probe source, and workflow configuration are valid"
 else
